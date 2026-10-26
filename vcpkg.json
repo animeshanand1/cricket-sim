@@ -1,0 +1,21 @@
+{
+  "name": "t20coach",
+  "version": "3.0.0",
+  "description": "T20 Coach C++ native desktop game UI & engine",
+  "dependencies": [
+    "sdl3",
+    {
+      "name": "imgui",
+      "features": [
+        "sdl3-binding",
+        "opengl3-binding",
+        "freetype"
+      ]
+    },
+    "implot",
+    "nanosvg",
+    "nlohmann-json",
+    "tsl-ordered-map",
+    "catch2"
+  ]
+}
