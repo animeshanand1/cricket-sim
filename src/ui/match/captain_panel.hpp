@@ -4,6 +4,7 @@
 // (presets and the custom editor), change bowler.
 
 #include <functional>
+#include <string>
 #include <vector>
 
 #include "app/match_session.hpp"
@@ -17,7 +18,13 @@ struct CaptainPanelState {
   bool scrollToDecision = false;  // set by the dock's "Pick your bowler" button
 };
 
-void drawCaptainPanel(app::MatchSession& session, CaptainPanelState& state, const std::function<void()>& onNewFixture);
+// A way out of a finished match ("Rematch", "Back to season"); the first is the primary button
+struct MatchExit {
+  std::string label;
+  std::function<void()> action;
+};
+
+void drawCaptainPanel(app::MatchSession& session, CaptainPanelState& state, const std::vector<MatchExit>& exits);
 
 // The dock's prompt while a decision is pending ("Pick your bowler", ...), or nullptr
 const char* pendingDecisionLabel(const Match& m);

@@ -13,7 +13,19 @@ and is never changed; the C++ is checked against it. Plan and rules: `../docs/cp
 | S05 5a–5c | Match screen wired to the engine (`src/app/match_session`, `src/ui/screens/match_screen`), captain's calls (`captain_panel`), crease cards (`crease`), Impact Player (`impact_panel`) in `src/ui/match/` | Done |
 | A4 | World and career: `career`, `development`, `records`, `popularity`, `milestones`, `achievements`, `season`, `sides`, `fitness`, `ageing`, `world`, `finance`, `auction`, `board`, `club`, `trades`, `editor` (+ create player and club captain), `league_view` (data.js) | Done. A season, the board's review, the off-season and season 2 leave exactly the JS game's state (world, career, season compared field by field) |
 | A5 | `app/Game` (Redux slices, thunks and the store's listener in one controller), `app/SaveManager` (saves), JSON layer (`core/json`, `engine/state_json`) | Done. `Game` replays the real JS store's runs exactly; quitting and relaunching restores the career; saves are the browser's JSON, both ways |
-| A6, other screens | Widget kit, then the screens | Not started |
+| A6, other screens | Widget kit (`src/ui/widgets/`: modal, sortable table, stepper, icons, form widgets), then the screens (`src/ui/screens/`): Home, Playing XI, Training, Toss, Season, Off-season, Sacked, Club, Players, player card and editor. The shell follows the `Game`'s screen; after the toss the Match screen plays the `Game`'s match | Done. Laid out from the `Game` controller and the engine (the JS screens were not available to compare against side by side) |
+
+## Build (Linux)
+
+GCC 13+ or Clang, CMake 3.25+ and Ninja; SDL3 builds from `third_party/` as on Windows:
+
+```sh
+cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/linux
+build/linux/t20_tests
+```
+
+Screenshots work without a display: `SDL_VIDEO_DRIVER=offscreen SDL_RENDER_DRIVER=software build/linux/t20coach --screenshot out.bmp ...`.
 
 ## Build (Windows, MinGW-w64 GCC from WinLibs)
 
@@ -30,7 +42,7 @@ Outputs in `build/mingw-release/` (static, no DLLs needed):
 
 | Exe | What it does |
 |-----|--------------|
-| `t20coach.exe` | The game (no console, no DLLs). Loads the career from the save folder (below) and records every finished match into it. `--screenshot out.bmp [--balls N] [--moment] [--until bowler\|batter\|review\|batting\|bowling] [--click X,Y]... [--size WxH] [--seed S]` plays to a state (the AI answers calls on the way), clicks, renders one frame to a file and exits (no saves unless `--save-dir` is given). `--save-dir DIR` uses another save folder; `--no-save` plays without saves |
+| `t20coach.exe` | The game (no console, no DLLs). Opens on Home (or wherever the save left off), loads the career from the save folder (below) and records every finished match into it. `--screenshot out.bmp` renders one frame to a file and exits (no saves unless `--save-dir` is given), after setting up a state: `--team ID`, `--season`, `--sim-games N`, `--finish-season [--sacked] [--offseason-stage draft\|auction\|done]`, `--toss`, `--screen NAME`, `--card ID [--edit]`; or a quick friendly on the Match screen with `--balls N`, `--moment`, `--until bowler\|batter\|review\|batting\|bowling` (the AI answers calls on the way). Also `--click X,Y` (repeatable), `--size WxH`, `--seed S`. `--save-dir DIR` uses another save folder; `--no-save` plays without saves |
 | `t20_tests.exe` | Catch2 suite: unit tests and golden parity tests |
 | `t20coach_balance.exe [N] [pitch] [--seed-base S]` | Simulates N AI v AI matches and prints the benchmark stats (port of `scripts/balance.mjs`) |
 | `t20coach_dump.exe league \| matches A B \| userflow A B \| balllog SEED` | Prints the same JSON as `tools/parity/dump_js.mjs` |
@@ -74,7 +86,7 @@ build/mingw-release/t20_tests.exe "[parity]" # just the JS-vs-C++ golden checks
 | `json_test.cpp` | (new) | JSON written byte for byte like `JSON.stringify`; escapes and numbers; malformed input refused; the diff finds differences; JS saves read back and write out the same |
 | `world_test.cpp` | `world`, `fitness`, `ageing`, `finance`, `club` tests | World from the roster; an off-season; ten seasons stay playable; fitness and injuries; ageing curves; money and bid steps; retention; the auction and RTM; the board; the club business (12 cases) |
 | `career_test.cpp` | `development`, `career`, `season`, `editor` tests | Training; development caps and position-aware judging; career stats reconcile with 60 scorecards; season format, playoffs, NRR; editor; new players and the club captain; milestones and achievements |
-| `game_test.cpp` | `lineup_and_settings`, board-through-the-store, create-player store tests | `Game` matches the JS store with the same seeds (setup screen too); quitting mid-season and relaunching changes nothing; saves round-trip, keep backups, survive a corrupt file, load browser saves; lineups and settings; friendlies and season fixtures through the listener; sacking and re-hiring; club captain and new players |
+| `game_test.cpp` | `lineup_and_settings`, board-through-the-store, create-player store tests | `Game` matches the JS store with the same seeds (setup screen too); quitting mid-season and relaunching changes nothing; saves round-trip, keep backups, survive a corrupt file, load browser saves; lineups and settings; friendlies and season fixtures through the listener; sacking and re-hiring; club captain and new players; the revision counter; a season fixture set up by the `Game` and played in a `MatchSession` lands in the season and the career |
 
 Not ported as unit tests: `field`, `fielding`, `tactics`, `mindset`, `matchups`, `weather`, `v2`,
 `milestones` (details) and `trades` (their code is covered by the parity runs).

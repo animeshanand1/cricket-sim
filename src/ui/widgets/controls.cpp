@@ -12,7 +12,7 @@ namespace {
 bool buttonImpl(const char* label, ButtonKind kind, bool enabled, bool fullWidth) {
   const auto& th = currentTheme();
   const auto& met = metrics();
-  const bool small = kind == ButtonKind::Small;
+  const bool small = kind == ButtonKind::Small || kind == ButtonKind::Danger;
   const FontRole fr = FontRole::BodyStrong;
   const char* labelEnd = ImGui::FindRenderedTextEnd(label);
   const ImVec2 ts = textSize(fr, std::string_view(label, static_cast<size_t>(labelEnd - label)));
@@ -224,34 +224,78 @@ void notice(const std::string& text, NoticeKind kind) {
   const ColorRGBA& c = kind == NoticeKind::Ok ? th.green : kind == NoticeKind::Warn ? th.gold : th.red;
   const float w = ImGui::GetContentRegionAvail().x;
   const ImVec2 p = ImGui::GetCursorScreenPos();
-  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w - 28);
-  ImGui::SetCursorScreenPos(ImVec2(p.x + 14, p.y + 10));
+  const ImVec2 ts = ImGui::CalcTextSize(text.c_str(), nullptr, false, w - 28);
+  const float h = ts.y + 20;
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->ChannelsSplit(2);
-  dl->ChannelsSetCurrent(1);
-  ImGui::TextUnformatted(text.c_str());
-  ImGui::PopTextWrapPos();
-  const float h = ImGui::GetItemRectSize().y + 20;
-  dl->ChannelsSetCurrent(0);
   dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), col(c, 0.12f), 10.0f);
   dl->AddRect(p, ImVec2(p.x + w, p.y + h), col(c, 0.45f), 10.0f);
-  dl->ChannelsMerge();
+  ImGui::SetCursorScreenPos(ImVec2(p.x + 14, p.y + 10));
+  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w - 28);
+  ImGui::TextUnformatted(text.c_str());
+  ImGui::PopTextWrapPos();
   ImGui::SetCursorScreenPos(p);
   ImGui::Dummy(ImVec2(w, h));
 }
 
-bool confirmInline(const char* message, const char* confirmLabel, const char* cancelLabel) {
+int confirmInline(const char* message, const char* confirmLabel, const char* cancelLabel) {
+  ImGui::PushID(message);
   notice(message, NoticeKind::Warn);
-  const bool ok = button(confirmLabel, ButtonKind::Primary);
+  ImGui::Dummy(ImVec2(0, 2));
+  int out = 0;
+  if (button(confirmLabel, ButtonKind::Primary)) out = 1;
   ImGui::SameLine();
-  button(cancelLabel, ButtonKind::Quiet);
-  return ok;
+  if (button(cancelLabel, ButtonKind::Quiet)) out = -1;
+  ImGui::PopID();
+  return out;
 }
+
+namespace {
+struct StickyState {
+  ImVec2 start;
+  float width = 0;
+  bool active = false;
+};
+StickyState s_sticky;
+}  // namespace
 
 void beginStickyActions() {
-  ImGui::Separator();
+  // A raised bar across the page: the screen's forward / back buttons, right after its content
+  ImGui::Dummy(ImVec2(0, 6));
+  s_sticky.start = ImGui::GetCursorScreenPos();
+  s_sticky.width = ImGui::GetContentRegionAvail().x;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->ChannelsSplit(2);
+  dl->ChannelsSetCurrent(1);
+  ImGui::SetCursorScreenPos(ImVec2(s_sticky.start.x + 14, s_sticky.start.y + 12));
+  ImGui::BeginGroup();
+  s_sticky.active = true;
 }
 
-void endStickyActions() {}
+void endStickyActions() {
+  const auto& th = currentTheme();
+  ImGui::EndGroup();
+  s_sticky.active = false;
+  const float bottom = ImGui::GetItemRectMax().y + 12;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->ChannelsSetCurrent(0);
+  const ImVec2 a = s_sticky.start, b(s_sticky.start.x + s_sticky.width, bottom);
+  dl->AddRectFilled(a, b, col(th.surface), metrics().panelRadius);
+  dl->AddRect(a, b, col(th.lineStrong), metrics().panelRadius);
+  dl->ChannelsMerge();
+  ImGui::SetCursorScreenPos(a);
+  ImGui::Dummy(ImVec2(s_sticky.width, bottom - a.y));
+}
+
+float rightAlign(float width) {
+  const float avail = ImGui::GetContentRegionAvail().x - (s_sticky.active ? 14.0f : 0.0f);
+  if (avail > width) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);
+  return avail;
+}
+
+float buttonWidth(const char* label, ButtonKind kind) {
+  const char* end = ImGui::FindRenderedTextEnd(label);
+  const float padX = kind == ButtonKind::Small || kind == ButtonKind::Danger ? 12.0f : metrics().buttonPaddingX;
+  return textSize(FontRole::BodyStrong, std::string_view(label, static_cast<size_t>(end - label))).x + padX * 2;
+}
 
 } // namespace t20::ui

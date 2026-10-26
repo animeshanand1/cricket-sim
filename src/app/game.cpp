@@ -83,7 +83,7 @@ Game::Dirty Game::takeDirty() {
   dirty_ = Dirty{};
   return d;
 }
-void Game::markAllDirty() { dirty_ = Dirty{true, true, true, true, true}; }
+void Game::markAllDirty() { mark() = Dirty{true, true, true, true, true}; }
 
 int32_t Game::newSeed() {
   const int32_t now = js_toint32(seeds_.now());
@@ -102,16 +102,16 @@ void Game::recordLineup() {
 
 void Game::goTo(const std::string& screen) {
   s_.setup.screen = screen;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::openPlayers() {
   if (s_.setup.screen != "players") s_.setup.returnTo = s_.setup.screen;
   s_.setup.screen = "players";
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::closePlayers() {
   s_.setup.screen = s_.setup.returnTo.empty() ? "home" : s_.setup.returnTo;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::selectUserTeam(const TeamId& id) {
@@ -138,16 +138,16 @@ void Game::selectUserTeam(const TeamId& id) {
     st.captainId.reset();
     recordLineup();
   }
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::selectOpponent(const TeamId& id) {
   if (id != s_.setup.userTeamId) s_.setup.oppTeamId = id;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::setPitch(const std::string& pitch) {
   s_.setup.pitch = pitch;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::setXI(const std::vector<PlayerId>& xi, const std::optional<PlayerId>& keeperId,
@@ -158,7 +158,7 @@ void Game::setXI(const std::vector<PlayerId>& xi, const std::optional<PlayerId>&
   st.captainId = contains(xi, captainId) ? captainId : contains(xi, st.captainId) ? st.captainId : std::nullopt;
   st.training.clear();
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::setTraining(size_t slot, const std::optional<PlayerId>& playerId, const std::string& drill) {
@@ -172,11 +172,11 @@ void Game::setTraining(size_t slot, const std::optional<PlayerId>& playerId, con
   }
   if (t.size() > static_cast<size_t>(MAX_TRAINING_SLOTS)) t.resize(MAX_TRAINING_SLOTS);
   s_.setup.training = t;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::clearTraining() {
   s_.setup.training.clear();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::togglePlayer(const PlayerId& id) {
@@ -190,7 +190,7 @@ void Game::togglePlayer(const PlayerId& id) {
     st.xi.push_back(id);
   }
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::movePlayer(const PlayerId& id, int dir) {
@@ -202,7 +202,7 @@ void Game::movePlayer(const PlayerId& id, int dir) {
   if (j < 0 || j >= static_cast<int>(xi.size())) return;
   std::swap(xi[static_cast<size_t>(i)], xi[static_cast<size_t>(j)]);
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::swapPlayers(const PlayerId& id1, const PlayerId& id2) {
@@ -228,7 +228,7 @@ void Game::swapPlayers(const PlayerId& id1, const PlayerId& id2) {
     drop(id2);
   }
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::reorderXI(int fromIndex, int toIndex) {
@@ -239,28 +239,28 @@ void Game::reorderXI(int fromIndex, int toIndex) {
   xi.erase(xi.begin() + fromIndex);
   xi.insert(xi.begin() + toIndex, moved);
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 void Game::setCaptain(const PlayerId& id) {
   if (contains(s_.setup.xi, id)) s_.setup.captainId = id;
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::captainCleared() {
   s_.setup.captainId.reset();
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::setKeeper(const PlayerId& id) {
   if (contains(s_.setup.xi, id)) s_.setup.keeperId = id;
   recordLineup();
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::updateMatchSettings(std::optional<double> aggression, std::optional<bool> autoBowl) {
   if (aggression) s_.setup.matchSettings.aggression = *aggression;
   if (autoBowl) s_.setup.matchSettings.autoBowl = *autoBowl;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +326,7 @@ void Game::startFixture() {
   Match m = createMatch(setup);
   if (st.fixture) m.fixture = st.fixture;
   s_.match = std::move(m);
-  dirty_.match = true;
+  mark().match = true;
   clearTraining();
   goTo("toss");
 }
@@ -337,7 +337,7 @@ void Game::newGame() {
   if (s_.match) updateMatchSettings(s_.match->settings.aggression.value_or(3), s_.match->settings.autoBowl);
   s_.match.reset();
   s_.setup.fixture.reset();
-  dirty_.match = true;
+  mark().match = true;
   goTo("home");
 }
 
@@ -345,7 +345,7 @@ void Game::withMatch(const std::function<void(Match&)>& fn) {
   if (!s_.match) return;
   const MatchStatus before = s_.match->status;
   fn(*s_.match);
-  dirty_.match = true;
+  mark().match = true;
   if (before != MatchStatus::complete && s_.match->status == MatchStatus::complete) afterMatch(*s_.match);
 }
 
@@ -372,7 +372,7 @@ void Game::setAggression(double level) {
     refreshMindset(m);
   });
   s_.setup.matchSettings.aggression = level;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::setBatterTempo(const PlayerId& batterId, Tempo level) {
   withMatch([&](Match& m) { t20::setBatterTempo(m, batterId, level); });
@@ -383,7 +383,7 @@ void Game::setAutoBowl(bool on) {
     if (on && m.awaiting == Awaiting::bowler) resolvePending(m);
   });
   s_.setup.matchSettings.autoBowl = on;
-  dirty_.setup = true;
+  mark().setup = true;
 }
 void Game::impactSub(int side, const PlayerId& out, const PlayerId& in) {
   withMatch([&](Match& m) { useImpactPlayer(m, side, out, in); });
@@ -415,7 +415,7 @@ void Game::afterMatch(const Match& m) {
     const TeamId me = m.teams[static_cast<size_t>(m.userTeam.value_or(0))].id;
     boardMatchResult(winner == me, !winner);
   }
-  dirty_ = Dirty{true, true, true, true, true};
+  mark() = Dirty{true, true, true, true, true};
 }
 
 void Game::matchFitness(const Match& m) {
@@ -539,7 +539,7 @@ void Game::playNextFixture() {
   } else {
     autoPick();
   }
-  dirty_.match = dirty_.setup = true;
+  mark().match = mark().setup = true;
   goTo("xi");
 }
 
@@ -547,7 +547,7 @@ void Game::backToSeason() {
   if (s_.match) updateMatchSettings(s_.match->settings.aggression.value_or(3), s_.match->settings.autoBowl);
   s_.match.reset();
   s_.setup.fixture.reset();
-  dirty_.match = true;
+  mark().match = true;
   goTo("season");
 }
 
@@ -659,39 +659,39 @@ void Game::startOffseason(std::optional<std::vector<TeamId>> order, const std::s
 
 void Game::contractRenewed(const PlayerId& id, int years) {
   if (s_.world.offseason && s_.world.offseason->userTeam) renewPlayer(s_.world, *s_.world.offseason->userTeam, id, years);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::contractReleased(const PlayerId& id) {
   const auto& o = s_.world.offseason;
   if (o && o->userTeam && (o->stage == "contracts" || o->stage == "retention")) releasePlayer(s_.world, *o->userTeam, id);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::contractsClosed() {
   if (s_.world.offseason && s_.world.offseason->stage == "contracts") closeContracts(s_.world);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::retentionSet(const std::vector<PlayerId>& ids) {
   if (s_.world.offseason && s_.world.offseason->stage == "retention") setRetention(s_.world, ids);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::retentionClosed() {
   if (s_.world.offseason && s_.world.offseason->stage == "retention") closeRetention(s_.world);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::scout(const PlayerId& id) {
   scoutProspect(s_.world, id);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::makeDraftPick(const PlayerId& id) {
   if (!s_.world.draft || !s_.world.draft->userTeam) return;
   const TeamId team = *s_.world.draft->userTeam;
   if (draftPick(s_.world, team, id)) advanceDraft(s_.world, s_.world.draft->userTeam);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::completeDraft() {
   if (!s_.world.draft) return;
   finishDraft(s_.world);
-  dirty_.world = true;
+  mark().world = true;
   if (s_.world.auction)
     runAuction(s_.world);
   else
@@ -699,22 +699,22 @@ void Game::completeDraft() {
 }
 void Game::auctionBid() {
   if (s_.world.auction && userBid(s_.world)) runAuction(s_.world);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::auctionPass() {
   if (s_.world.auction && userPass(s_.world)) runAuction(s_.world);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::auctionLimit(double max) {
   if (s_.world.auction && userLimit(s_.world, max)) runAuction(s_.world);
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::auctionAutoRest() {
   if (s_.world.auction) {
     userAutoRest(s_.world);
     runAuction(s_.world);
   }
-  dirty_.world = true;
+  mark().world = true;
 }
 void Game::auctionRtm(const std::string& step, double value) {
   if (!s_.world.auction) return;
@@ -722,7 +722,7 @@ void Game::auctionRtm(const std::string& step, double value) {
   if (step == "raise") rtmRaise(s_.world, value);
   if (step == "match") rtmMatch(s_.world, value != 0);
   runAuction(s_.world);
-  dirty_.world = true;
+  mark().world = true;
 }
 
 void Game::finishOffseason() {
@@ -734,7 +734,7 @@ void Game::finishOffseason() {
     if (!s_.world.auction->lot && s_.world.auction->idx >= static_cast<int>(s_.world.auction->lots.size()))
       closeAuction(s_.world);
   }
-  dirty_.world = true;
+  mark().world = true;
   if (s_.world.auction) return;  // auction not finished
   autoPick();
   if (then == "season")
@@ -745,7 +745,7 @@ void Game::finishOffseason() {
 
 void Game::offseasonReportDismissed() {
   s_.world.lastOffseason.reset();
-  dirty_.world = true;
+  mark().world = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -757,35 +757,35 @@ TeamId clubTeam(const GameState& s) { return s.world.manager.team.value_or(s.set
 }  // namespace
 
 bool Game::clubUpgradeOrdered(const std::string& key) {
-  dirty_.world = true;
+  mark().world = true;
   return orderUpgrade(s_.world, clubTeam(s_), key);
 }
 bool Game::clubTicketsSet(const std::string& tier) {
-  dirty_.world = true;
+  mark().world = true;
   return setTicketTier(s_.world, clubTeam(s_), tier);
 }
 bool Game::clubPitchSet(std::optional<Pitch> pitch) {
-  dirty_.world = true;
+  mark().world = true;
   return setHomePitch(s_.world, clubTeam(s_), pitch);
 }
 bool Game::clubPrizeShareSet(int share) {
-  dirty_.world = true;
+  mark().world = true;
   return setPrizeShare(s_.world, clubTeam(s_), share);
 }
 bool Game::clubStaffSet(const std::string& role, int tier) {
-  dirty_.world = true;
+  mark().world = true;
   return setStaff(s_.world, clubTeam(s_), role, tier);
 }
 bool Game::clubCoachAssigned(const PlayerId& playerId, const std::string& area, int tier) {
-  dirty_.world = true;
+  mark().world = true;
   return assignCoach(s_.world, clubTeam(s_), playerId, area, tier);
 }
 bool Game::clubCoachRemoved(const PlayerId& playerId) {
-  dirty_.world = true;
+  mark().world = true;
   return removeCoach(s_.world, clubTeam(s_), playerId);
 }
 bool Game::clubSponsorSigned(const std::string& slot, size_t index) {
-  dirty_.world = true;
+  mark().world = true;
   return signSponsor(s_.world, clubTeam(s_), slot, index);
 }
 
@@ -805,19 +805,19 @@ EditResult Game::savePlayerEdit(const PlayerId& id, const EditDraft& draft) {
   writeEdit(*p, res.edit, s_.world.year);
   recompute(*p);
   s_.career.progress.erase(id);
-  dirty_.world = dirty_.career = true;
+  mark().world = mark().career = true;
   return res;
 }
 
 void Game::restorePlayer(const PlayerId& id) {
   if (Player* p = s_.world.players.find(id); p && undoEdit(*p, s_.world.year)) recompute(*p);
-  dirty_.world = true;
+  mark().world = true;
 }
 
 void Game::allEditsRestored() {
   for (auto& [id, p] : s_.world.players)
     if (undoEdit(p, s_.world.year)) recompute(p);
-  dirty_.world = true;
+  mark().world = true;
 }
 
 CreateOutcome Game::createNewPlayer(const TeamId& teamId, const EditDraft& draft) {
@@ -842,7 +842,7 @@ CreateOutcome Game::createNewPlayer(const TeamId& teamId, const EditDraft& draft
   }
   const CreateResult made = createPlayer(s_.world, teamId, res.edit);
   if (!made.ok) return fail(made.error.empty() ? "He could not be added to the squad." : made.error);
-  dirty_.world = true;
+  mark().world = true;
   if (draft.captain) makeClubCaptain(made.id);
   out.ok = true;
   out.id = made.id;
@@ -854,7 +854,7 @@ CaptainOutcome Game::makeClubCaptain(const PlayerId& id) {
   if (!p || !p->team || p->retired) return {false, false, false, "Only a player in a squad can captain it."};
   const TeamId team = *p->team;
   setClubCaptain(s_.world, team, id);
-  dirty_.world = true;
+  mark().world = true;
   if (team != s_.setup.userTeamId) return {true, false, false, {}};
   const auto lg = league();
   const Team* t = findTeam(lg, team);
@@ -875,7 +875,7 @@ CaptainOutcome Game::makeClubCaptain(const PlayerId& id) {
 void Game::removeClubCaptain(const TeamId& teamId) {
   const auto was = clubCaptainOf(s_.world, teamId);
   setClubCaptain(s_.world, teamId, std::nullopt);
-  dirty_.world = true;
+  mark().world = true;
   if (was && teamId == s_.setup.userTeamId && s_.setup.captainId == was) captainCleared();
 }
 
@@ -883,7 +883,7 @@ void Game::chooseCaptain(const PlayerId& id) {
   setCaptain(id);
   if (s_.setup.captainId == id) {
     setClubCaptain(s_.world, s_.setup.userTeamId, id);
-    dirty_.world = true;
+    mark().world = true;
   }
 }
 
@@ -904,7 +904,7 @@ TradeVerdict Game::proposeTrade(const TeamId& other, const Offer& offer) {
   TradeVerdict v = evaluateTrade(s_.world, team, other, offer);
   if (!v.accept) return v;
   makeTrade(s_.world, team, other, offer);
-  dirty_.world = true;
+  mark().world = true;
   const auto& squad = s_.world.teams.at(team).squad;
   if (std::any_of(s_.setup.xi.begin(), s_.setup.xi.end(), [&](const PlayerId& id) { return !contains(squad, id); }))
     autoPick();
@@ -917,7 +917,7 @@ bool Game::signCover(const PlayerId& injuredId, const PlayerId& id) {
       s_.season.season ? std::optional<TeamId>(s_.season.season->userTeam) : s_.world.manager.team;
   if (!team) return false;
   signReplacement(s_.world, *team, injuredId, id);
-  dirty_.world = true;
+  mark().world = true;
   const Player* p = s_.world.players.find(id);
   return p && p->team == team;
 }
@@ -928,7 +928,7 @@ bool Game::signCover(const PlayerId& injuredId, const PlayerId& id) {
 
 void Game::resetCareer() {
   s_.career = Career{};
-  dirty_.career = true;
+  mark().career = true;
 }
 void Game::openCard(const PlayerId& id) {
   s_.ui.cardPlayerId = id;

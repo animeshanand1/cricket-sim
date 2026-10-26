@@ -1,8 +1,19 @@
-// T20 Coach desktop entry point (step A1): an SDL3 window with Dear ImGui on SDL_Renderer,
-// the app shell, and the Match screen driving the C++ engine.
+// T20 Coach desktop entry point: an SDL3 window with Dear ImGui on SDL_Renderer, the app shell
+// and every screen (A6), driven by the Game controller and the C++ engine.
 //
-//   t20coach.exe                       play
+//   t20coach.exe                       play (opens on Home, or wherever the save left off)
 //   t20coach.exe --screenshot out.bmp  render, save one frame, exit (docs and visual checks)
+//   Set up a state first (screenshots and visual checks):
+//       [--team ID]        manage this team (friendly setup)
+//       [--season]         start a season with it      [--sim-games N]  sim season games up to no. N
+//       [--finish-season]  sim the rest of the season, then go into the off-season
+//       [--screen NAME]    open a screen: home, xi, training, toss, season, offseason, club, players
+//       [--card ID]        open a player's card ([--edit] in the editor)
+//       [--toss]           set up the friendly up to the toss
+//       [--offseason-stage draft|auction|done]  after --finish-season: close contracts (and the
+//                          draft; done: auto-bid the whole auction)
+//       [--sacked]         with --finish-season: the board has lost faith before its review
+//   A quick friendly on the Match screen (the A1-S05 checks):
 //       [--balls N]    play N balls first        [--moment]  then play on until a 4, 6 or wicket
 //       [--size WxH]   window size               [--seed S]  match seed
 //       [--frames F]   frames to render before the capture (default 30)
@@ -41,7 +52,8 @@
 #include "app/save_manager.hpp"
 #include "core/str.hpp"
 #include "ui/app_shell.hpp"
-#include "ui/screens/match_screen.hpp"
+#include "ui/screens/screens.hpp"
+#include "ui/screens/ui_context.hpp"
 #include "ui/gfx.hpp"
 #include "ui/theme.hpp"
 
@@ -58,6 +70,10 @@ struct Options {
   std::vector<std::pair<float, float>> clicks;
   std::string saveDir;
   bool noSave = false;
+  std::string team, screen, card, offseasonStage;
+  bool season = false, finishSeason = false, toss = false, edit = false, sacked = false;
+  int simGames = 0;
+  bool quickMatch() const { return balls > 0 || moment || !until.empty(); }
 };
 
 Options parseArgs(int argc, char** argv) {
@@ -78,6 +94,16 @@ Options parseArgs(int argc, char** argv) {
     else if (a == "--size") std::sscanf(next().c_str(), "%dx%d", &o.width, &o.height);
     else if (a == "--save-dir") o.saveDir = next();
     else if (a == "--no-save") o.noSave = true;
+    else if (a == "--team") o.team = next();
+    else if (a == "--screen") o.screen = next();
+    else if (a == "--card") o.card = next();
+    else if (a == "--edit") o.edit = true;
+    else if (a == "--sacked") o.sacked = true;
+    else if (a == "--season") o.season = true;
+    else if (a == "--finish-season") o.finishSeason = true;
+    else if (a == "--toss") o.toss = true;
+    else if (a == "--offseason-stage") o.offseasonStage = next();
+    else if (a == "--sim-games") o.simGames = std::atoi(next().c_str());
   }
   return o;
 }
@@ -173,19 +199,58 @@ int main(int argc, char** argv) {
 
   t20::app::MatchSession session;
   bool leagueStale = false;
-  if (saves) {
-    // The squads as the saved career has left them; each finished match goes into the career
-    session.setLeague(game.league());
-    session.setSavedMatchups(&game.state().career.matchups);
-    session.makeId = [](int32_t seed) { return t20::cat(seed, '-', nowMs()); };
-    session.onComplete = [&](const t20::Match& m) {
-      game.recordFinishedMatch(m);
+  session.setLeague(game.league());
+  session.setSavedMatchups(&game.state().career.matchups);
+  session.makeId = [](int32_t seed) { return t20::cat(seed, '-', nowMs()); };
+  // Every finished match goes into the career (and the season, for a fixture), then the save
+  session.onComplete = [&](const t20::Match& m) {
+    game.recordFinishedMatch(m);
+    if (saves) {
       const bool ok = saves->flush(game);
       logLine(saveRoot, t20::cat("match ", m.id, " recorded: ", m.result ? m.result->text : std::string(), ok ? "; saved" : "; save failed: " + saves->lastError()));
-      leagueStale = true;
-    };
+    }
+    leagueStale = true;
+  };
+
+  // Scripted state for screenshots
+  if (!opt.team.empty()) game.chooseTeam(opt.team);
+  if (opt.season || opt.simGames > 0 || opt.finishSeason) {
+    if (!game.state().season.season) game.startSeason(game.state().setup.userTeamId);
+    if (opt.simGames > 0) {
+      t20::app::SimOptions so;
+      so.includeUser = true;
+      so.stopAfter = opt.simGames;
+      game.simFixtures(so);
+    }
+    if (opt.finishSeason) {
+      t20::app::SimOptions so;
+      so.includeUser = true;
+      game.simFixtures(so);
+      if (opt.sacked) game.state().world.manager.confidence = 1;
+      game.nextSeason();
+      const auto& off = game.state().world.offseason;
+      const bool past = opt.offseasonStage == "draft" || opt.offseasonStage == "auction" || opt.offseasonStage == "done";
+      if (off && past) {
+        if (off->stage == "contracts") game.contractsClosed();
+        else if (off->stage == "retention") game.retentionClosed();
+      }
+      if (off && (opt.offseasonStage == "auction" || opt.offseasonStage == "done")) game.completeDraft();
+      if (off && opt.offseasonStage == "done") game.auctionAutoRest();
+    }
   }
-  session.newMatch(5, 7, opt.seed, saves ? std::optional<std::string>(t20::cat(opt.seed, '-', nowMs())) : std::nullopt);
+  if (opt.toss) {
+    game.goTo("xi");
+    game.startFixture();
+  }
+  if (!opt.screen.empty()) game.goTo(opt.screen);
+  if (!opt.card.empty()) game.openCard(opt.card);
+  if (!opt.card.empty() && opt.edit) game.openEditor(opt.card);
+
+  if (opt.quickMatch()) {
+    // A friendly on the Match screen straight away, played to a state
+    session.newMatch(5, 7, opt.seed, saves ? std::optional<std::string>(t20::cat(opt.seed, '-', nowMs())) : std::nullopt);
+    game.goTo("match");
+  }
   // One scripted step: the AI answers any pending call, then a ball is bowled
   auto step = [&session] {
     if (session.match().awaiting != t20::Awaiting::none) session.letAiDecide();
@@ -221,10 +286,10 @@ int main(int argc, char** argv) {
     }
   }
 
+  t20::ui::UiContext ctx(game, session);
   t20::ui::AppShell shell;
-  shell.registerView(t20::View::match, std::make_unique<t20::ui::MatchScreen>(session));
-  shell.setMatchState(session.hasMatch(), session.isLive());
-  shell.goTo(t20::Screen::match);
+  shell.bind(&ctx);
+  t20::ui::registerScreens(shell, ctx);
 
   // --- main loop ----------------------------------------------------------------------------
   bool running = true;
@@ -258,15 +323,12 @@ int main(int argc, char** argv) {
     }
 
     session.update(dt);
-    shell.setMatchState(session.hasMatch(), session.isLive());
-    if (saves) {
-      // Development and fitness from the last match show in the next one
-      if (leagueStale && session.match().status == t20::MatchStatus::complete) {
-        session.setLeague(game.league());
-        leagueStale = false;
-      }
-      saves->tick(game, dt);
+    // Development and fitness from the last match show in the next quick friendly
+    if (leagueStale && (!session.hasMatch() || session.match().status == t20::MatchStatus::complete) && !session.adopted()) {
+      session.setLeague(game.league());
+      leagueStale = false;
     }
+    if (saves) saves->tick(game, dt);
 
     ImGui_ImplSDLRenderer3_NewFrame();
     ImGui_ImplSDL3_NewFrame();

@@ -69,13 +69,31 @@ void pageHeader(const std::string& title,
 }
 
 bool collapsedPanel(const char* title, const char* summary, bool* isExpanded) {
-  if (isExpanded && !*isExpanded) {
-    ImGui::TextUnformatted(title);
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", summary);
-    return false;
+  // Closed: a one-line bar (title, muted summary, "Show"). Open: the caller draws the panel and
+  // can call collapsedPanel again with the same flag to offer "Hide".
+  if (!isExpanded) return true;
+  if (*isExpanded) return true;
+  const auto& th = currentTheme();
+  const float w = ImGui::GetContentRegionAvail().x, h = 46.0f;
+  const ImVec2 p = ImGui::GetCursorScreenPos();
+  ImGui::PushID(title);
+  if (ImGui::InvisibleButton("##collapsed", ImVec2(w, h))) *isExpanded = true;
+  const bool hovered = ImGui::IsItemHovered();
+  ImGui::PopID();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(p, ImVec2(p.x + w, p.y + h), col(hovered ? th.surface2 : th.surface), metrics().panelRadius);
+  dl->AddRect(p, ImVec2(p.x + w, p.y + h), col(hovered ? th.lineStrong : th.line), metrics().panelRadius);
+  const std::string t = upper(title);
+  const ImVec2 ts = textSize(FontRole::PanelTitle, t);
+  drawText(dl, FontRole::PanelTitle, ImVec2(p.x + 18, p.y + (h - ts.y) * 0.5f), col(th.ink), t);
+  if (summary && *summary) {
+    const ImVec2 ss = textSize(FontRole::Hint, summary);
+    drawText(dl, FontRole::Hint, ImVec2(p.x + 32 + ts.x, p.y + (h - ss.y) * 0.5f), col(th.muted), summary);
   }
-  return true;
+  const ImVec2 bs = textSize(FontRole::BodyStrong, "Show");
+  drawText(dl, FontRole::BodyStrong, ImVec2(p.x + w - 18 - bs.x, p.y + (h - bs.y) * 0.5f), col(th.goldText), "Show");
+  if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+  return false;
 }
 
 bool foldRow(const char* id, const char* title, const char* summary, bool defaultOpen) {

@@ -32,6 +32,15 @@ class MatchSession {
   // id: the match id the career records it under (default: the seed)
   void newMatch(int home, int away, int32_t seed, std::optional<std::string> id = std::nullopt);
 
+  // Take over a match the Game set up (a season fixture or a friendly), usually just after the
+  // toss. `league` is the league it was built from (Game::league()); the home side is the
+  // fixture's home team, else side 0.
+  void adopt(Match match, std::vector<Team> league);
+  // No match on screen any more (back to the season, a new game)
+  void clear();
+  // True when the match came from adopt() (rematches go through the Game instead)
+  bool adopted() const { return adopted_; }
+
   // The squads to pick from: the saved world with development (Game::league()); the fixed
   // roster until this is called
   void setLeague(std::vector<Team> league) { league_ = std::move(league); }
@@ -107,6 +116,7 @@ class MatchSession {
   MatchupBook live_;
   const MatchupBook* saved_ = nullptr;
   bool reported_ = false;
+  bool adopted_ = false;
   double watchClock_ = 0;
   std::unique_ptr<WinChanceRun> winRun_;
   std::optional<std::array<double, 2>> winChance_;

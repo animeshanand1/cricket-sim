@@ -121,6 +121,7 @@ if(T20_BUILD_APP)
     src/ui/gfx.cpp
     src/ui/icons.cpp
     src/ui/theme.cpp
+    src/ui/view_data.cpp
     src/ui/match/captain_panel.cpp
     src/ui/match/crease.cpp
     src/ui/match/field_view.cpp
@@ -128,10 +129,23 @@ if(T20_BUILD_APP)
     src/ui/match/moment_banner.cpp
     src/ui/match/scoreboard.cpp
     src/ui/match/win_and_fans.cpp
+    src/ui/screens/club_screen.cpp
+    src/ui/screens/common.cpp
     src/ui/screens/gallery_screen.cpp
+    src/ui/screens/home_screen.cpp
     src/ui/screens/match_screen.cpp
+    src/ui/screens/offseason_screen.cpp
+    src/ui/screens/player_card.cpp
+    src/ui/screens/players_screen.cpp
+    src/ui/screens/screens.cpp
+    src/ui/screens/season_screen.cpp
+    src/ui/screens/toss_screen.cpp
+    src/ui/screens/training_screen.cpp
+    src/ui/screens/ui_context.cpp
+    src/ui/screens/xi_screen.cpp
     src/ui/widgets/avatar.cpp
     src/ui/widgets/controls.cpp
+    src/ui/widgets/forms.cpp
     src/ui/widgets/meter_and_rating.cpp
     src/ui/widgets/modal.cpp
     src/ui/widgets/nav_bar.cpp

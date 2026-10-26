@@ -4,6 +4,8 @@
 #include "ui/anim.hpp"
 #include "ui/widgets/stepper.hpp"
 #include "ui/widgets/modal.hpp"
+#include "ui/screens/ui_context.hpp"
+#include "engine/season.hpp"
 #include <algorithm>
 
 namespace t20::ui {
@@ -40,37 +42,86 @@ View AppShell::resolveView(Screen screen, bool hasMatch) {
   }
 }
 
-void AppShell::goTo(Screen screen) {
-  if (m_screen == screen) return;
+void AppShell::enter(Screen screen) {
+  const View view = resolveView(screen, m_ctx ? m_ctx->hasMatch() : m_hasMatch);
+  if (m_screen == screen && m_view == view) return;
   m_screen = screen;
-  View prevView = m_view;
-  m_view = resolveView(m_screen, m_hasMatch);
-
-  // When view changes, notify onEnter (which also resets scroll to top)
+  const View prevView = m_view;
+  m_view = view;
+  // A new view starts at the top and gets its onEnter
   if (prevView != m_view) {
+    m_scrollTop = true;
     auto it = m_views.find(static_cast<int>(m_view));
-    if (it != m_views.end() && it->second) {
-      it->second->onEnter();
-    }
+    if (it != m_views.end() && it->second) it->second->onEnter();
   }
 }
 
+void AppShell::goTo(Screen screen) {
+  if (m_ctx) {
+    m_ctx->goTo(screen);
+    syncFromGame();
+    return;
+  }
+  enter(screen);
+}
+
 void AppShell::openPlayers() {
+  if (m_ctx) {
+    m_ctx->game.openPlayers();
+    syncFromGame();
+    return;
+  }
   m_returnTo = m_screen;
-  goTo(Screen::players);
+  enter(Screen::players);
 }
 
 void AppShell::closePlayers() {
-  goTo(m_returnTo);
+  if (m_ctx) {
+    m_ctx->game.closePlayers();
+    syncFromGame();
+    return;
+  }
+  enter(m_returnTo);
 }
 
 void AppShell::openPlayerCard(const std::string& playerId) {
+  if (m_ctx) {
+    m_ctx->openCard(playerId);
+    return;
+  }
   m_cardPlayerId = playerId;
   startTween("modal_in", 0.0f, 1.0f, 0.22, EaseType::EaseOutQuad);
 }
 
 void AppShell::closePlayerCard() {
+  if (m_ctx) m_ctx->game.closeCard();
   m_cardPlayerId.clear();
+}
+
+void AppShell::syncFromGame() {
+  if (!m_ctx) return;
+  const auto& st = m_ctx->game.state();
+  m_hasMatch = m_ctx->hasMatch();
+  m_isMatchLive = m_ctx->matchIsLive();
+  m_cardPlayerId = st.ui.cardPlayerId.value_or("");
+  // The view also changes when a match appears or goes (toss / match need one)
+  enter(m_ctx->screen());
+  // Season · position · points in the nav bar
+  static uint64_t builtAt = UINT64_MAX;
+  if (builtAt != m_ctx->revision()) {
+    builtAt = m_ctx->revision();
+    m_seasonInfo.reset();
+    if (const auto& season = st.season.season) {
+      SeasonNavInfo info;
+      info.seasonNumber = season->number;
+      for (const auto& r : pointsTable(*season))
+        if (r.team == season->userTeam) {
+          info.tablePosition = r.pos;
+          info.points = r.pts;
+        }
+      m_seasonInfo = info;
+    }
+  }
 }
 
 void AppShell::registerView(View view, std::unique_ptr<IScreenView> screen) {
@@ -85,6 +136,8 @@ void AppShell::renderFrame(float viewportWidth, float viewportHeight, double del
 
   // 2. Background with the two soft radial glows
   drawBackgroundGlows(ImGui::GetBackgroundDrawList(), viewportWidth, viewportHeight);
+
+  syncFromGame();
 
   // 3. One borderless root window covering the whole SDL window
   ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -120,13 +173,18 @@ void AppShell::drawNavBar(float viewportWidth) {
         goTo(Screen::home);
         break;
       case View::season:
-        goTo(Screen::season);
+        if (m_ctx && m_ctx->game.state().world.manager.sacked) goTo(Screen::sacked);
+        else if (m_ctx && m_ctx->game.state().world.offseason) goTo(Screen::offseason);
+        else goTo(Screen::season);
         break;
       case View::club:
         goTo(Screen::club);
         break;
       case View::match:
-        if (m_hasMatch) {
+        if (m_ctx && !m_ctx->session.hasMatch() && m_ctx->game.state().match &&
+            m_ctx->game.state().match->status == MatchStatus::toss) {
+          goTo(Screen::toss);
+        } else if (m_hasMatch) {
           goTo(Screen::match);
         }
         break;
@@ -147,6 +205,10 @@ void AppShell::drawCurrentView(float viewportWidth, float viewportHeight) {
   float contentX = (viewportWidth - contentWidth) * 0.5f;
 
   ImGui::BeginChild("##scroll", ImVec2(viewportWidth, viewportHeight), 0, ImGuiWindowFlags_NoBackground);
+  if (m_scrollTop) {
+    ImGui::SetScrollY(0);
+    m_scrollTop = false;
+  }
   ImGui::SetCursorPos(ImVec2(contentX, 24.0f));
   ImGui::BeginChild("##page", ImVec2(contentWidth, 0), ImGuiChildFlags_AutoResizeY,
                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
@@ -166,13 +228,11 @@ void AppShell::drawCurrentView(float viewportWidth, float viewportHeight) {
 
 void AppShell::drawPlayerCardModal() {
   bool isOpen = !m_cardPlayerId.empty();
-  if (beginModal("player_card_modal", &isOpen, "Player Card", metrics().maxModalWidth)) {
-    // Render player card contents
+  if (beginModal("##player_card", &isOpen, nullptr, 820.0f)) {
+    if (m_card) m_card->draw(std::min(820.0f, ImGui::GetIO().DisplaySize.x - 48.0f) - 44.0f);
     endModal();
   }
-  if (!isOpen) {
-    closePlayerCard();
-  }
+  if (!isOpen) closePlayerCard();
 }
 
 } // namespace t20::ui

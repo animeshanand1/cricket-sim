@@ -1,4 +1,8 @@
 #include "ui/theme.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
 #include "ui/gfx.hpp"
 #include "ui/fonts_embedded.hpp"
 #include <cmath>
@@ -102,6 +106,136 @@ void* getFont(FontRole role) {
   return nullptr;
 }
 
+namespace {
+
+// Glyphs Barlow doesn't have (₹ ▲ ▼ ★) are drawn into the font atlas as custom glyphs, so money
+// and sort arrows render the same on every system without another font file.
+using Pt = ImVec2;
+struct GlyphShape {
+  std::vector<std::vector<Pt>> strokes;  // polylines in a 0..1 box
+  std::vector<Pt> fill;                  // a polygon in a 0..1 box (even-odd)
+  float widthEm, heightEm, strokeEm;
+};
+
+float segDist(Pt p, Pt a, Pt b) {
+  const float vx = b.x - a.x, vy = b.y - a.y, wx = p.x - a.x, wy = p.y - a.y;
+  const float len2 = vx * vx + vy * vy;
+  const float t = len2 > 0 ? std::clamp((wx * vx + wy * vy) / len2, 0.0f, 1.0f) : 0.0f;
+  const float dx = p.x - (a.x + t * vx), dy = p.y - (a.y + t * vy);
+  return std::sqrt(dx * dx + dy * dy);
+}
+
+bool insidePoly(Pt p, const std::vector<Pt>& poly) {
+  bool in = false;
+  for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+    if ((poly[i].y > p.y) != (poly[j].y > p.y) &&
+        p.x < (poly[j].x - poly[i].x) * (p.y - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x)
+      in = !in;
+  }
+  return in;
+}
+
+GlyphShape rupee() {
+  GlyphShape g;
+  g.widthEm = 0.46f;
+  g.heightEm = 0.63f;
+  g.strokeEm = 0.07f;
+  g.strokes.push_back({{0.06f, 0.07f}, {0.94f, 0.07f}});
+  g.strokes.push_back({{0.06f, 0.33f}, {0.94f, 0.33f}});
+  std::vector<Pt> bowl;
+  for (int i = 0; i <= 16; ++i) {
+    const float a = -1.5708f + 3.14159f * i / 16.0f;
+    bowl.push_back({0.36f + 0.40f * std::cos(a), 0.32f + 0.25f * std::sin(a)});
+  }
+  bowl.push_back({0.06f, 0.57f});
+  g.strokes.push_back(bowl);
+  g.strokes.push_back({{0.14f, 0.57f}, {0.84f, 0.96f}});
+  return g;
+}
+
+GlyphShape triangle(bool up) {
+  GlyphShape g;
+  g.widthEm = 0.50f;
+  g.heightEm = 0.42f;
+  g.strokeEm = 0;
+  g.fill = up ? std::vector<Pt>{{0.5f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}} : std::vector<Pt>{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.5f, 1.0f}};
+  return g;
+}
+
+GlyphShape star() {
+  GlyphShape g;
+  g.widthEm = 0.72f;
+  g.heightEm = 0.70f;
+  g.strokeEm = 0;
+  for (int i = 0; i < 10; ++i) {
+    const float a = -1.5708f + 3.14159f * i / 5.0f, r = i % 2 == 0 ? 0.5f : 0.2f;
+    g.fill.push_back({0.5f + r * std::cos(a), 0.53f + r * std::sin(a)});
+  }
+  return g;
+}
+
+void rasterise(const GlyphShape& g, unsigned char* px, int pitch, int x0, int y0, int w, int h) {
+  const float t = g.strokeEm > 0 ? std::max(1.1f, g.strokeEm * static_cast<float>(h) / g.heightEm) : 0.0f;
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      float cover = 0;
+      if (!g.strokes.empty()) {
+        const Pt p(x + 0.5f, y + 0.5f);
+        float d = 1e9f;
+        for (const auto& line : g.strokes)
+          for (size_t i = 1; i < line.size(); ++i)
+            d = std::min(d, segDist(p, Pt(line[i - 1].x * (w - 1), line[i - 1].y * (h - 1)), Pt(line[i].x * (w - 1), line[i].y * (h - 1))));
+        cover = std::clamp(t * 0.5f - d + 0.5f, 0.0f, 1.0f);
+      }
+      if (!g.fill.empty()) {
+        int hits = 0;
+        for (int sy = 0; sy < 4; ++sy)
+          for (int sx = 0; sx < 4; ++sx)
+            hits += insidePoly(Pt((x + (sx + 0.5f) / 4) / w, (y + (sy + 0.5f) / 4) / h), g.fill) ? 1 : 0;
+        cover = std::max(cover, hits / 16.0f);
+      }
+      px[(y0 + y) * pitch + x0 + x] = static_cast<unsigned char>(cover * 255.0f + 0.5f);
+    }
+}
+
+void addMissingGlyphs() {
+  ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+  atlas->Build();
+  struct Job {
+    int rect;
+    GlyphShape shape;
+  };
+  std::vector<Job> jobs;
+  const std::pair<ImWchar, GlyphShape> wanted[] = {{0x20B9, rupee()}, {0x25B2, triangle(true)}, {0x25BC, triangle(false)}, {0x2605, star()}};
+  std::vector<ImFont*> seen;
+  for (void* fp : s_fontAtlas.fonts) {
+    ImFont* f = static_cast<ImFont*>(fp);
+    if (!f || std::find(seen.begin(), seen.end(), f) != seen.end()) continue;
+    seen.push_back(f);
+    for (const auto& [cp, shape] : wanted) {
+      if (f->FindGlyphNoFallback(cp)) continue;
+      const float em = f->FontSize;
+      const int w = std::max(3, static_cast<int>(std::lround(shape.widthEm * em)));
+      const int h = std::max(3, static_cast<int>(std::lround(shape.heightEm * em)));
+      // sits on the baseline, cap height tall (triangles centred on the x-height)
+      const float top = shape.fill.empty() || shape.heightEm > 0.6f ? f->Ascent - h - em * 0.01f : f->Ascent - em * 0.52f;
+      const int id = atlas->AddCustomRectFontGlyph(f, cp, w, h, w + em * 0.08f, ImVec2(em * 0.03f, top));
+      jobs.push_back({id, shape});
+    }
+  }
+  if (jobs.empty()) return;
+  atlas->Build();
+  unsigned char* pixels = nullptr;
+  int tw = 0, th = 0;
+  atlas->GetTexDataAsAlpha8(&pixels, &tw, &th);
+  for (const Job& j : jobs) {
+    const ImFontAtlasCustomRect* r = atlas->GetCustomRectByIndex(j.rect);
+    if (r && r->IsPacked()) rasterise(j.shape, pixels, tw, r->X, r->Y, r->Width, r->Height);
+  }
+}
+
+}  // namespace
+
 void loadFonts(float dpiScale) {
   ImGuiIO& io = ImGui::GetIO();
   io.Fonts->Clear();
@@ -147,6 +281,7 @@ void loadFonts(float dpiScale) {
     s_fontAtlas.fonts[static_cast<int>(sp.role)] = f;
   }
   io.FontDefault = static_cast<ImFont*>(s_fontAtlas.fonts[static_cast<int>(FontRole::Body)]);
+  addMissingGlyphs();
 }
 
 void applyImGuiStyle() {

@@ -57,11 +57,16 @@ enum class NoticeKind {
 // Notice banner
 void notice(const std::string& text, NoticeKind kind = NoticeKind::Ok);
 
-// In-place confirmation banner with confirm/cancel buttons
-bool confirmInline(const char* message, const char* confirmLabel = "Confirm", const char* cancelLabel = "Cancel");
+// In-place confirmation banner with confirm/cancel buttons: 1 = confirmed, -1 = cancelled, 0 = neither
+int confirmInline(const char* message, const char* confirmLabel = "Confirm", const char* cancelLabel = "Cancel");
 
-// Sticky bottom action bar container for main forward/back CTAs
+// The action bar at the end of a screen (its forward / back buttons) on a raised strip
 void beginStickyActions();
 void endStickyActions();
+
+// Move the cursor so an item `width` wide ends at the right edge; returns the width there was
+float rightAlign(float width);
+// How wide button(label, kind) will be (for right-aligning a row of buttons)
+float buttonWidth(const char* label, ButtonKind kind = ButtonKind::Default);
 
 } // namespace t20::ui

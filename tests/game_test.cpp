@@ -14,6 +14,8 @@
 #include <sstream>
 
 #include "app/game.hpp"
+#include "app/match_session.hpp"
+#include "engine/season.hpp"
 #include "app/save_manager.hpp"
 #include "core/json.hpp"
 #include "engine/state_json.hpp"
@@ -314,6 +316,65 @@ TEST_CASE("settings: tempo and auto-bowl carry from a live match into the next",
   g.startFixture();
   CHECK(*g.state().match->settings.aggression == 5);
   CHECK(g.state().match->settings.autoBowl);
+}
+
+TEST_CASE("game: the revision moves with every change, not with reads", "[game]") {
+  Game g = freshGame();
+  const uint64_t r0 = g.revision();
+  (void)g.league();
+  (void)g.state();
+  CHECK(g.revision() == r0);
+  g.chooseTeam("MUI");
+  const uint64_t r1 = g.revision();
+  CHECK(r1 > r0);
+  g.setPitch("dusty");
+  CHECK(g.revision() > r1);
+}
+
+TEST_CASE("game: a season fixture set up by the Game and played in the Match screen's session lands in the season",
+          "[game][session]") {
+  Game g = freshGame();
+  g.startSeason("MUI");
+  g.simFixtures();  // the other games, up to the user's first
+  const Fixture* next = nextUserFixture(*g.state().season.season);
+  REQUIRE(next);
+  const int no = next->no;
+  g.playNextFixture();
+  REQUIRE(g.state().setup.screen == "xi");
+  g.startFixture();
+  REQUIRE(g.state().setup.screen == "toss");
+  g.callToss("heads");
+  if (g.state().match->status == MatchStatus::toss) g.chooseToss(TossDecision::bowl);
+  REQUIRE(g.state().match->status == MatchStatus::live);
+
+  app::MatchSession s;
+  int recorded = 0;
+  s.onComplete = [&](const Match& m) {
+    ++recorded;
+    g.recordFinishedMatch(m);
+  };
+  s.adopt(*g.state().match, g.league());
+  REQUIRE(s.adopted());
+  REQUIRE(s.match().fixture);
+  CHECK(s.match().fixture->no == no);
+  CHECK(s.homeTeam().id == s.match().fixture->home);
+  s.simMatch();
+  REQUIRE(s.match().status == MatchStatus::complete);
+  CHECK(recorded == 1);
+
+  const Season& season = *g.state().season.season;
+  const auto fx = std::find_if(season.fixtures.begin(), season.fixtures.end(), [&](const Fixture& f) { return f.no == no; });
+  REQUIRE(fx != season.fixtures.end());
+  REQUIRE(fx->result);
+  CHECK(fx->result->matchId == s.match().id);
+  const auto& ids = g.state().career.recorded;
+  CHECK(std::count(ids.begin(), ids.end(), s.match().id) == 1);
+
+  s.clear();
+  CHECK_FALSE(s.hasMatch());
+  g.backToSeason();
+  CHECK(g.state().setup.screen == "season");
+  CHECK_FALSE(g.state().match);
 }
 
 // ---------------------------------------------------------------------------

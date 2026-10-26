@@ -197,3 +197,19 @@ TEST_CASE("session: the Impact Player substitution (5c)", "[session]") {
   CHECK(impactOptions(s.match(), side).reason == "Impact Player already used");
   CHECK_FALSE(s.impactSub(side, after.players.back(), before.bench.front()));
 }
+
+TEST_CASE("session: adopting a match that is already over never reports it again", "[session]") {
+  app::MatchSession s;
+  s.newMatch(1, 2, 77);
+  s.simMatch();
+  REQUIRE(s.match().status == MatchStatus::complete);
+  const Match done = s.match();
+  app::MatchSession t;
+  int reports = 0;
+  t.onComplete = [&](const Match&) { ++reports; };
+  t.adopt(done, generateLeague());
+  CHECK(t.adopted());
+  CHECK(reports == 0);
+  t.clear();
+  CHECK_FALSE(t.hasMatch());
+}

@@ -530,7 +530,7 @@ const char* pendingDecisionLabel(const Match& m) {
   }
 }
 
-void drawCaptainPanel(app::MatchSession& s, CaptainPanelState& st, const std::function<void()>& onNewFixture) {
+void drawCaptainPanel(app::MatchSession& s, CaptainPanelState& st, const std::vector<MatchExit>& exits) {
   const auto& th = currentTheme();
   const Match& m = s.match();
 
@@ -541,9 +541,10 @@ void drawCaptainPanel(app::MatchSession& s, CaptainPanelState& st, const std::fu
       ImGui::TextColored(vec(th.goldText), "%s", m.result ? m.result->text.c_str() : "Match over");
     }
     if (m.potm) ImGui::TextColored(vec(th.ink2), "Player of the match: %s", P(m, *m.potm).name.c_str());
-    if (button("Rematch", ButtonKind::Primary)) s.rematch();
-    ImGui::SameLine();
-    if (button("New fixture", ButtonKind::Quiet) && onNewFixture) onNewFixture();
+    for (size_t i = 0; i < exits.size(); ++i) {
+      if (i > 0) ImGui::SameLine();
+      if (button(exits[i].label.c_str(), i == 0 ? ButtonKind::Primary : ButtonKind::Quiet) && exits[i].action) exits[i].action();
+    }
     endPanel();
     return;
   }
