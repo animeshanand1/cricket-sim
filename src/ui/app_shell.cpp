@@ -36,6 +36,8 @@ View AppShell::resolveView(Screen screen, bool hasMatch) {
       return View::xi;
     case Screen::training:
       return View::training;
+    case Screen::gallery:
+      return View::gallery;
     case Screen::home:
     default:
       return View::home;

@@ -213,3 +213,37 @@ TEST_CASE("session: adopting a match that is already over never reports it again
   t.clear();
   CHECK_FALSE(t.hasMatch());
 }
+
+TEST_CASE("session: win-chance checkpoints at the start, each over end and the end", "[session]") {
+  app::MatchSession s;
+  s.newMatch(3, 4, 99);
+  auto settle = [&] {
+    while (s.winChanceBusy()) s.update(0);
+  };
+  settle();
+  // two overs, ball by ball, letting the sims finish each time (the AI makes any call)
+  for (int guard = 0; guard < 40 && inningsOf(s.match()).legalBalls < 12; ++guard) {
+    if (s.match().awaiting != Awaiting::none) s.letAiDecide();
+    else s.nextBall();
+    settle();
+  }
+  const auto& pts = s.winPoints();
+  REQUIRE(pts.size() >= 3);
+  CHECK(pts.front().innings == 0);
+  CHECK(pts.front().balls == 0);
+  bool sixAt = false, twelveAt = false;
+  for (const auto& p : pts) {
+    CHECK(p.first >= 0.0);
+    CHECK(p.first <= 1.0);
+    sixAt = sixAt || p.balls == 6;
+    twelveAt = twelveAt || p.balls == 12;
+  }
+  CHECK(sixAt);
+  CHECK(twelveAt);
+  s.simMatch();
+  REQUIRE(s.match().status == MatchStatus::complete);
+  CHECK(s.winPoints().back().label == "End");
+  const auto& r = s.match().result;
+  const int first = s.match().battingFirst.value_or(0);
+  if (r && r->winner) CHECK(s.winPoints().back().first == (*r->winner == first ? 1.0 : 0.0));
+}

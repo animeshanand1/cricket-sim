@@ -1,16 +1,19 @@
 #include "ui/match/crease.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
 #include "core/str.hpp"
 #include "engine/league.hpp"
+#include "engine/milestones.hpp"
 #include "engine/rules.hpp"
 #include "engine/skills.hpp"
 #include "engine/special.hpp"
 #include "engine/tactics.hpp"
 #include "ui/format.hpp"
 #include "ui/gfx.hpp"
+#include "ui/icons.hpp"
 #include "ui/theme.hpp"
 #include "ui/widgets/avatar.hpp"
 #include "ui/widgets/meter_and_rating.hpp"
@@ -59,7 +62,25 @@ void muted(FontRole role, const std::string& text) {
   ImGui::TextColored(vec(currentTheme().muted), "%s", text.c_str());
 }
 
-void batCard(const Match& m, const Innings& inn, const PlayerId& id, bool striker, const std::string& color, float width) {
+// ChaseList: reached (tick, green), a record or a personal best (star), a milestone (target)
+void chaseList(const std::vector<Chase>& chases) {
+  const auto& th = currentTheme();
+  for (const Chase& c : chases) {
+    const bool reached = c.kind == "reached";
+    const char* icon = reached ? "check" : c.kind == "chase" ? "target" : "star";
+    const ColorRGBA& tone = reached ? th.green : c.kind == "record" ? th.goldText : th.ink2;
+    const ImVec2 p = ImGui::GetCursorScreenPos();
+    drawIcon(ImGui::GetWindowDrawList(), icon, p.x, p.y + 1, 13.0f, tone);
+    ImGui::SetCursorScreenPos(ImVec2(p.x + 18, p.y));
+    FontScope fs(FontRole::Hint);
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextColored(vec(reached ? th.green : th.ink2), "%s", c.text.c_str());
+    ImGui::PopTextWrapPos();
+  }
+}
+
+void batCard(const Match& m, const Innings& inn, const PlayerId& id, bool striker, const std::string& color, float width,
+             const std::vector<Chase>& chases) {
   const auto& th = currentTheme();
   const BatterInnings& b = inn.batters.at(id);
   const Player& p = P(m, id);
@@ -87,11 +108,11 @@ void batCard(const Match& m, const Innings& inn, const PlayerId& id, bool strike
   muted(FontRole::Body, cat("(", b.balls, ")"));
   muted(FontRole::Hint, cat("4s ", b.fours, "    6s ", b.sixes, "    SR ", sr(b.runs, b.balls)));
   meter(static_cast<float>(b.conf), confidenceLabel(b.conf).c_str(), true);
-  // ChaseList: career milestones arrive with A4 (see crease.hpp)
+  chaseList(chases);
   endCard();
 }
 
-void bowlCard(const Match& m, const Innings& inn, const PlayerId& id, const std::string& color) {
+void bowlCard(const Match& m, const Innings& inn, const PlayerId& id, const std::string& color, const std::vector<Chase>& chases) {
   const auto& th = currentTheme();
   const Player& bowler = P(m, id);
   const BowlingFigures* fig = inn.bowling.find(id);
@@ -149,14 +170,32 @@ void bowlCard(const Match& m, const Innings& inn, const PlayerId& id, const std:
                        (state + (fig->specials ? cat(" · bowled ", fig->specials) : std::string())).c_str());
     ImGui::PopTextWrapPos();
   }
+  chaseList(chases);
   endCard();
 }
 
 }  // namespace
 
-void drawCrease(const Match& m) {
+void drawCrease(const Match& m, const Career* career) {
   const auto& th = currentTheme();
   const Innings& inn = inningsOf(m);
+
+  // Career chases: not in a Super Over, and not once the match is in the career
+  const bool chasing = career && !inn.superOver &&
+                       std::find(career->recorded.begin(), career->recorded.end(), m.id) == career->recorded.end();
+  OrderedMap<PlayerId, Counts> counts;
+  if (chasing) counts = matchCounts(m);
+  auto chasesFor = [&](const PlayerId& id, std::string_view as) {
+    if (!chasing) return std::vector<Chase>{};
+    ChaseInput in;
+    in.stats = career->players.find(id);
+    in.inMatch = counts.find(id);
+    in.as = as;
+    in.bat = as == "bat" ? inn.batters.find(id) : nullptr;
+    in.fig = as == "bowl" ? inn.bowling.find(id) : nullptr;
+    in.records = &career->records;
+    return playerChases(in);
+  };
   beginPanel("##crease", "At the crease");
   {
     // panel-head: partnership on the right of the title row
@@ -177,7 +216,7 @@ void drawCrease(const Match& m) {
     if (!id || !inn.batters.find(*id)) continue;
     if (!first) ImGui::SameLine(0, gap);
     first = false;
-    batCard(m, inn, *id, inn.striker && *id == *inn.striker, batColor, cardW);
+    batCard(m, inn, *id, inn.striker && *id == *inn.striker, batColor, cardW, chasesFor(*id, "bat"));
   }
 
   // Mind line: the striker's own reading of the game
@@ -193,7 +232,7 @@ void drawCrease(const Match& m) {
   }
 
   const std::optional<PlayerId>& bowlerId = inn.currentBowler ? inn.currentBowler : inn.lastOverBowler;
-  if (bowlerId) bowlCard(m, inn, *bowlerId, bowlColor);
+  if (bowlerId) bowlCard(m, inn, *bowlerId, bowlColor, chasesFor(*bowlerId, "bowl"));
 
   if (!inn.fow.empty()) {
     const FallOfWicket& w = inn.fow.back();

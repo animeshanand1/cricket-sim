@@ -1,5 +1,6 @@
 #include "ui/screens/screens.hpp"
 
+#include "ui/screens/gallery_screen.hpp"
 #include "ui/screens/match_screen.hpp"
 
 namespace t20::ui {
@@ -15,6 +16,7 @@ void registerScreens(AppShell& shell, UiContext& ctx) {
   shell.registerView(View::sacked, makeSackedScreen(ctx));
   shell.registerView(View::club, makeClubScreen(ctx));
   shell.registerView(View::players, makePlayersScreen(ctx));
+  shell.registerView(View::gallery, std::make_unique<GalleryScreen>());
   shell.setPlayerCard(makePlayerCard(ctx));
 }
 

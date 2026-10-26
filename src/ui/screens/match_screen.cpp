@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include "engine/milestones.hpp"
 #include "engine/mindset.hpp"
 #include "engine/pitch.hpp"
 #include "engine/rules.hpp"
@@ -12,7 +13,10 @@
 #include "ui/anim.hpp"
 #include "ui/format.hpp"
 #include "ui/gfx.hpp"
+#include "ui/match/charts.hpp"
 #include "ui/match/crease.hpp"
+#include "ui/match/result_panels.hpp"
+#include "ui/screens/common.hpp"
 #include "ui/match/moment_banner.hpp"
 #include "ui/match/scoreboard.hpp"
 #include "ui/theme.hpp"
@@ -135,22 +139,6 @@ ScoreboardViewData scoreboardData(const Match& m, const std::optional<std::array
   return d;
 }
 
-ColorRGBA commentaryColor(CommentKind k) {
-  const auto& th = currentTheme();
-  switch (k) {
-    case CommentKind::wicket: return th.red;
-    case CommentKind::four: return th.blue;
-    case CommentKind::six: return th.gold;
-    case CommentKind::milestone: return th.purple;
-    case CommentKind::result: return th.green;
-    case CommentKind::extra: return th.orange;
-    case CommentKind::drop: return th.orange;
-    case CommentKind::review: return th.purple;
-    case CommentKind::over: return th.lineStrong;
-    default: return th.line;
-  }
-}
-
 void eyebrow(const std::string& text, const ColorRGBA& c) {
   FontScope fs(FontRole::Eyebrow);
   ImGui::TextColored(vec(c), "%s", upper(text).c_str());
@@ -164,6 +152,9 @@ void MatchScreen::onEnter() {
   m_scorecardInnings = -1;
   m_captain = CaptainPanelState{};
   m_impact = ImpactPanelState{};
+  m_field = FieldViewState{0, {}, m_field.showFielders, m_field.open, 0};
+  m_dev = DevReportState{};
+  m_detailTab = 0;
 }
 
 std::vector<MatchExit> MatchScreen::exits() {
@@ -188,14 +179,36 @@ void MatchScreen::draw(float contentWidth) {
 
   drawHeader();
   ImGui::Dummy(ImVec2(0, 4));
+  const Match& match = m_session.match();
+  const MatchStatus status = match.status;
+  const bool complete = status == MatchStatus::complete;
+  const float gap = 18.0f;
 
-  // Dock rail on the left, the match on the right
-  const float dockW = 168.0f, gap = 18.0f;
-  ImGui::BeginChild("##dock", ImVec2(dockW, 0), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground);
-  drawDock();
-  ImGui::EndChild();
-  ImGui::SameLine(0, gap);
-  const float mainW = contentWidth - dockW - gap;
+  // S06: the result, what it brought, who developed, the league's favourites
+  if (complete) {
+    drawResultBanner(match, exits());
+    ImGui::Dummy(ImVec2(0, 8));
+    if (m_ctx) {
+      const auto& st = m_ctx->game.state();
+      drawMatchMilestones(match, st.career, st.season.history, st.world.manager.history);
+      ImGui::Dummy(ImVec2(0, 6));
+      drawDevelopmentReport(match, st.career, m_dev);
+      ImGui::Dummy(ImVec2(0, 6));
+      popularityMeter(*m_ctx, "##matchpop");
+      ImGui::Dummy(ImVec2(0, 8));
+    }
+  }
+
+  // Dock rail on the left while the match is on, the match on the right
+  float mainW = contentWidth;
+  if (!complete) {
+    const float dockW = 168.0f;
+    ImGui::BeginChild("##dock", ImVec2(dockW, 0), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground);
+    drawDock();
+    ImGui::EndChild();
+    ImGui::SameLine(0, gap);
+    mainW = contentWidth - dockW - gap;
+  }
   ImGui::BeginChild("##main", ImVec2(mainW, 0), ImGuiChildFlags_AutoResizeY,
                     ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
   drawScoreboardArea(mainW);
@@ -207,19 +220,28 @@ void MatchScreen::draw(float contentWidth) {
   ImGui::BeginChild("##left", ImVec2(colW, 0), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
   drawCaptainPanel(m_session, m_captain, exits());
   ImGui::Dummy(ImVec2(0, 6));
-  const MatchStatus status = m_session.match().status;
   if (status == MatchStatus::live) {
-    drawCrease(m_session.match());
+    drawCrease(match, m_ctx ? &m_ctx->game.state().career : nullptr);
     ImGui::Dummy(ImVec2(0, 6));
   }
   if (status == MatchStatus::live || status == MatchStatus::break_) drawImpactPanel(m_session, m_impact);
+  if (complete) {
+    beginPanel("##unfolded", "How the match unfolded");
+    const float w = ImGui::GetContentRegionAvail().x;
+    drawWorm(match, w, 230);
+    ImGui::Dummy(ImVec2(0, 6));
+    drawWinChart(match, m_session.winPoints(), w, 190);
+    endPanel();
+  }
   ImGui::EndChild();
   if (twoCol) ImGui::SameLine(0, gap);
   ImGui::BeginChild("##right", ImVec2(colW, 0), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
+  drawFieldViewPanel(match, m_field);
+  ImGui::Dummy(ImVec2(0, 6));
   drawCommentary();
   ImGui::EndChild();
   ImGui::Dummy(ImVec2(0, 6));
-  drawScorecard();
+  drawDetails();
   ImGui::EndChild();
 }
 
@@ -274,7 +296,7 @@ void MatchScreen::drawDock() {
   const char* watchLabel = m_session.watching ? (m.awaiting != Awaiting::none ? "Waiting" : "Pause") : "Watch";
   if (full(watchLabel, ButtonKind::Default, live)) m_session.watching = !m_session.watching;
   if (m_session.watching) {
-    static const double secs[] = {1.6, 0.9, 0.35};
+    static const double secs[] = {1.4, 0.7, 0.26};
     m_speed = segmented({"Slow", "Med", "Fast"}, m_speed);
     m_session.watchInterval = secs[m_speed];
     switchToggle("Stop at wickets", &m_session.stopOnWicket);
@@ -316,64 +338,58 @@ void MatchScreen::drawScoreboardArea(float width) {
   drawMomentBanner(ImGui::GetWindowDrawList(), o.x + width - 30, o.y + 22);
 }
 
-void MatchScreen::drawCommentary() {
-  const auto& th = currentTheme();
+void MatchScreen::drawCommentary() { drawCommentaryPanel(m_session.match(), m_comment); }
+
+void MatchScreen::drawDetails() {
   const Match& m = m_session.match();
-  beginPanel("##commentary", "Commentary");
-  // newest first, across both innings
-  int shown = 0;
-  for (int i = static_cast<int>(m.innings.size()) - 1; i >= 0 && shown < 16; --i) {
-    const auto& lines = m.innings[static_cast<size_t>(i)].commentary;
-    for (auto it = lines.rbegin(); it != lines.rend() && shown < 16; ++it, ++shown) {
-      const CommentaryLine& c = *it;
-      ImDrawList* dl = ImGui::GetWindowDrawList();
-      const ImVec2 p = ImGui::GetCursorScreenPos();
-      ImGui::SetCursorScreenPos(ImVec2(p.x + 12, p.y));
-      ImGui::BeginGroup();
-      if (!c.over.empty()) {
-        FontScope fs(FontRole::Eyebrow);
-        ImGui::TextColored(vec(th.muted), "%s", c.over.c_str());
-        ImGui::SameLine();
-      }
-      ImGui::PushTextWrapPos(0);
-      const bool strong = c.kind == CommentKind::wicket || c.kind == CommentKind::six || c.kind == CommentKind::result ||
-                          c.kind == CommentKind::milestone;
-      {
-        FontScope fs(strong ? FontRole::BodyStrong : FontRole::Body);
-        ImGui::TextColored(vec(c.kind == CommentKind::over || c.kind == CommentKind::info ? th.ink2 : th.ink), "%s", c.text.c_str());
-      }
-      ImGui::PopTextWrapPos();
-      ImGui::EndGroup();
-      const float h = ImGui::GetItemRectSize().y;
-      dl->AddRectFilled(ImVec2(p.x, p.y + 1), ImVec2(p.x + 3, p.y + h - 1), col(commentaryColor(c.kind)), 2.0f);
-      ImGui::Dummy(ImVec2(0, 1));
+  beginPanel("##details", nullptr);
+  m_detailTab = tabs({{"card", "Scorecard", ""}, {"worm", "Worm", ""}, {"manhattan", "Manhattan", ""}, {"win", "Win chance", ""}},
+                     m_detailTab);
+  const int n = static_cast<int>(m.innings.size());
+  int sel = m_scorecardInnings < 0 || m_scorecardInnings >= n ? m.current : m_scorecardInnings;
+  if (m_detailTab == 0 && n > 1) {
+    ImGui::SameLine(0, 16);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 6);
+    for (int i = 0; i < n; ++i) {
+      const Innings& inn = m.innings[static_cast<size_t>(i)];
+      std::string label = m.teams[static_cast<size_t>(inn.batting)].id + (inn.superOver ? " (SO)" : "");
+      if (chip((label + "##inn" + std::to_string(i)).c_str(), sel == i)) m_scorecardInnings = sel = (i == m.current ? -1 : i);
+      ImGui::SameLine(0, 6);
     }
+    ImGui::NewLine();
   }
-  if (shown == 0) ImGui::TextColored(vec(th.muted), "Play a ball to start the commentary.");
+  ImGui::Dummy(ImVec2(0, 6));
+  const float w = ImGui::GetContentRegionAvail().x;
+  switch (m_detailTab) {
+    case 1: drawWorm(m, w, 300); break;
+    case 2: drawManhattan(m, w, 280); break;
+    case 3: drawWinChart(m, m_session.winPoints(), w, 260); break;
+    default: drawScorecard(sel); break;
+  }
   endPanel();
 }
 
-void MatchScreen::drawScorecard() {
+void MatchScreen::drawScorecard(int sel) {
   const auto& th = currentTheme();
   const Match& m = m_session.match();
-  beginPanel("##scorecard", "Scorecard");
-  const int n = static_cast<int>(m.innings.size());
-  int sel = m_scorecardInnings < 0 || m_scorecardInnings >= n ? m.current : m_scorecardInnings;
-  for (int i = 0; i < n; ++i) {
-    const auto& t = m.teams[static_cast<size_t>(m.innings[static_cast<size_t>(i)].batting)];
-    if (chip((t.id + "##inn" + std::to_string(i)).c_str(), sel == i)) m_scorecardInnings = sel = i;
-    ImGui::SameLine(0, 6);
-  }
-  ImGui::NewLine();
   const Innings& inn = m.innings[static_cast<size_t>(sel)];
-
+  const MatchTeam& bat = m.teams[static_cast<size_t>(inn.batting)];
+  const MatchTeam& bowl = m.teams[static_cast<size_t>(inn.bowlingSide)];
+  auto surnameOf = [&](const PlayerId& id) { return surname(P(m, id).name); };
+  auto impactIn = [&](const MatchTeam& t, const PlayerId& id) { return t.impact && t.impact->in == id; };
   const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
-  const float half = (ImGui::GetContentRegionAvail().x - 24) * 0.58f;
-  ImGui::BeginGroup();
-  if (ImGui::BeginTable("##bat", 7, flags, ImVec2(half, 0))) {
+  ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, vec(ColorRGBA(th.surface2.r, th.surface2.g, th.surface2.b, 0.55f)));
+  ImGui::PushStyleColor(ImGuiCol_TableRowBg, ImVec4(0, 0, 0, 0));
+
+  // Batting
+  {
+    FontScope fs(FontRole::H3);
+    ImGui::Text("%s batting%s", bat.name.c_str(), inn.superOver ? (" \xc2\xb7 Super Over " + std::to_string(inn.superOver)).c_str() : "");
+  }
+  if (ImGui::BeginTable("##bat", 7, flags)) {
     ImGui::TableSetupColumn("Batter", ImGuiTableColumnFlags_WidthStretch, 3.2f);
-    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 3.4f);
-    for (const char* h : {"R", "B", "4s", "6s", "SR"}) ImGui::TableSetupColumn(h, ImGuiTableColumnFlags_WidthStretch, 0.9f);
+    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch, 3.6f);
+    for (const char* h : {"R", "B", "4s", "6s", "SR"}) ImGui::TableSetupColumn(h, ImGuiTableColumnFlags_WidthStretch, 0.8f);
     ImGui::TableHeadersRow();
     for (const PlayerId& id : inn.battedOrder) {
       const BatterInnings* bp = inn.batters.find(id);
@@ -381,14 +397,27 @@ void MatchScreen::drawScorecard() {
       const BatterInnings& b = *bp;
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
-      const bool atCrease = (inn.striker && *inn.striker == id) || (inn.nonStriker && *inn.nonStriker == id);
-      ImGui::TextColored(vec(atCrease && !b.out ? th.goldText : th.ink), "%s%s", P(m, id).name.c_str(), atCrease && !b.out ? " *" : "");
+      ImGui::PushID(id.c_str());
+      if (playerLink(id, P(m, id).name) && m_ctx) m_ctx->openCard(id);
+      ImGui::PopID();
+      std::string marks;
+      if (bat.captainId == id) marks += " (c)";
+      if (bat.keeperId == id) marks += " \xe2\x80\xa0";
+      if (!marks.empty()) {
+        ImGui::SameLine(0, 2);
+        ImGui::TextColored(vec(th.muted), "%s", marks.c_str());
+      }
+      if (impactIn(bat, id)) {
+        ImGui::SameLine(0, 6);
+        ipTag();
+      }
       ImGui::TableNextColumn();
-      ImGui::TextColored(vec(th.muted), "%s", b.out ? (b.howOut ? b.howOut->c_str() : "out") : "not out");
+      const bool live = !inn.complete && m.status == MatchStatus::live;
+      ImGui::TextColored(vec(th.muted), "%s", b.out ? (b.howOut ? b.howOut->c_str() : "out") : live ? "batting" : "not out");
       ImGui::TableNextColumn();
       {
         FontScope fs(FontRole::BodyStrong);
-        ImGui::Text("%d", b.runs);
+        ImGui::Text("%d%s", b.runs, b.out ? "" : "*");
       }
       ImGui::TableNextColumn();
       ImGui::Text("%d", b.balls);
@@ -397,31 +426,75 @@ void MatchScreen::drawScorecard() {
       ImGui::TableNextColumn();
       ImGui::Text("%d", b.sixes);
       ImGui::TableNextColumn();
-      ImGui::Text("%s", b.balls ? fixed(100.0 * b.runs / b.balls, 1).c_str() : "–");
+      ImGui::Text("%s", b.balls ? fixed(100.0 * b.runs / b.balls, 1).c_str() : "\xe2\x80\x93");
+    }
+    // extras and the total
+    const Extras& e = inn.extras;
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::TextColored(vec(th.ink2), "Extras");
+    ImGui::TableNextColumn();
+    ImGui::TextColored(vec(th.muted), "b %d, lb %d, wd %d, nb %d", e.b, e.lb, e.wd, e.nb);
+    ImGui::TableNextColumn();
+    ImGui::Text("%d", e.b + e.lb + e.wd + e.nb);
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    {
+      FontScope fs(FontRole::BodyStrong);
+      ImGui::TextUnformatted("Total");
+    }
+    ImGui::TableNextColumn();
+    ImGui::TextColored(vec(th.muted), "%s ov \xc2\xb7 RR %s", oversText(inn.legalBalls).c_str(), fixed(runRate(inn.runs, inn.legalBalls), 2).c_str());
+    ImGui::TableNextColumn();
+    {
+      FontScope fs(FontRole::BodyStrong);
+      ImGui::Text("%d/%d", inn.runs, inn.wickets);
     }
     ImGui::EndTable();
   }
+  // notes: yet to bat, fall of wickets, reviews
+  ImGui::PushTextWrapPos(0);
   if (!inn.yetToBat.empty() && !inn.complete) {
     std::string names;
     for (const PlayerId& id : inn.yetToBat) names += (names.empty() ? "" : ", ") + P(m, id).name;
-    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + half);
     ImGui::TextColored(vec(th.muted), "Yet to bat: %s", names.c_str());
-    ImGui::PopTextWrapPos();
   }
-  const Extras& e = inn.extras;
-  ImGui::TextColored(vec(th.muted), "Extras %d (wd %d, nb %d, lb %d, b %d)   Total %d/%d (%s ov)", e.wd + e.nb + e.lb + e.b, e.wd, e.nb,
-                     e.lb, e.b, inn.runs, inn.wickets, oversText(inn.legalBalls).c_str());
-  ImGui::EndGroup();
-  ImGui::SameLine(0, 24);
-  if (ImGui::BeginTable("##bowl", 6, flags, ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-    ImGui::TableSetupColumn("Bowler", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-    for (const char* h : {"O", "M", "R", "W", "Econ"}) ImGui::TableSetupColumn(h, ImGuiTableColumnFlags_WidthStretch, 1.0f);
+  if (!inn.fow.empty()) {
+    std::string fow;
+    for (const FallOfWicket& f : inn.fow)
+      fow += (fow.empty() ? "" : ", ") + std::to_string(f.runs) + "-" + std::to_string(f.wicket) + " (" + surnameOf(f.playerId) + ", " + f.over + ")";
+    ImGui::TextColored(vec(th.muted), "Fall of wickets: %s", fow.c_str());
+  }
+  if (!inn.reviews.empty()) {
+    std::string rv;
+    for (const ReviewRecord& r : inn.reviews)
+      rv += (rv.empty() ? "" : ", ") + m.teams[static_cast<size_t>(r.side)].id + ": " + std::string(name(r.type)) + " v " + surnameOf(r.batter) +
+            (r.overturned ? ", overturned (" : ", upheld (") + ballTag(r.ball - 1) + ")";
+    ImGui::TextColored(vec(th.muted), "Reviews: %s", rv.c_str());
+  }
+  ImGui::PopTextWrapPos();
+  ImGui::Dummy(ImVec2(0, 8));
+
+  // Bowling
+  {
+    FontScope fs(FontRole::H3);
+    ImGui::Text("%s bowling", bowl.name.c_str());
+  }
+  if (ImGui::BeginTable("##bowl", 9, flags)) {
+    ImGui::TableSetupColumn("Bowler", ImGuiTableColumnFlags_WidthStretch, 3.2f);
+    for (const char* h : {"O", "M", "R", "W", "Econ", "Dots", "Wd", "Nb"}) ImGui::TableSetupColumn(h, ImGuiTableColumnFlags_WidthStretch, 0.9f);
     ImGui::TableHeadersRow();
     for (const auto& [id, f] : inn.bowling) {
       if (f.balls == 0 && f.runs == 0) continue;
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
-      ImGui::Text("%s", P(m, id).name.c_str());
+      ImGui::PushID(id.c_str());
+      if (playerLink(id, P(m, id).name) && m_ctx) m_ctx->openCard(id);
+      ImGui::PopID();
+      if (impactIn(bowl, id)) {
+        ImGui::SameLine(0, 6);
+        ipTag();
+      }
       ImGui::TableNextColumn();
       ImGui::Text("%s", oversText(f.balls).c_str());
       ImGui::TableNextColumn();
@@ -434,11 +507,17 @@ void MatchScreen::drawScorecard() {
         ImGui::TextColored(vec(f.wickets >= 3 ? th.goldText : th.ink), "%d", f.wickets);
       }
       ImGui::TableNextColumn();
-      ImGui::Text("%s", f.balls ? fixed(f.runs * 6.0 / f.balls, 2).c_str() : "–");
+      ImGui::Text("%s", f.balls ? fixed(f.runs * 6.0 / f.balls, 2).c_str() : "\xe2\x80\x93");
+      ImGui::TableNextColumn();
+      ImGui::Text("%d", f.dots);
+      ImGui::TableNextColumn();
+      ImGui::Text("%d", f.wides);
+      ImGui::TableNextColumn();
+      ImGui::Text("%d", f.noballs);
     }
     ImGui::EndTable();
   }
-  endPanel();
+  ImGui::PopStyleColor(2);
 }
 
 void MatchScreen::handleKeys() {
@@ -462,18 +541,70 @@ void MatchScreen::handleKeys() {
 void MatchScreen::consumeEvents() {
   const Match& m = m_session.match();
   const std::vector<app::BallEvent> events = m_session.takeEvents();
-  // After a batch (Next over, sims) only the last ball gets a moment
-  if (!events.empty()) {
-    const app::BallEvent& ev = events.back();
-    if (!ev.outcome.empty()) startTween("pip_pop", 0.4f, 1.0f, 0.35, EaseType::EaseOutCubic);
-    if (ev.matchOver && m.result) {
-      triggerMomentBanner({MomentKind::Result, m.result->winner ? "Winners!" : "Match over", m.result->text});
-    } else if (ev.outcome == "W") {
-      triggerMomentBanner({MomentKind::Wicket, "Wicket!", upper(ev.batter)});
-    } else if (ev.outcome == "6") {
-      triggerMomentBanner({MomentKind::Six, "Six!", upper(ev.batter)});
-    } else if (ev.outcome == "4") {
-      triggerMomentBanner({MomentKind::Four, "Four!", upper(ev.batter)});
+  if (!events.empty() && !events.back().outcome.empty()) startTween("pip_pop", 0.4f, 1.0f, 0.35, EaseType::EaseOutCubic);
+
+  // A new match: start counting from here (no banner for what was already there)
+  const Innings& inn = inningsOf(m);
+  if (m.id != m_momentMatch) {
+    m_momentMatch = m.id;
+    m_momentInnings = m.current;
+    m_momentLines = inn.commentary.size();
+    m_reached.clear();
+    if (m_ctx)
+      for (const auto& r : reachedInMatch(m_ctx->game.state().career.players, m)) m_reached.insert(r.key);
+    return;
+  }
+  const size_t lines = inn.commentary.size();
+  const bool sameInnings = m.current == m_momentInnings;
+  const size_t fresh = sameInnings && lines > m_momentLines ? lines - m_momentLines : 0;
+  m_momentInnings = m.current;
+  m_momentLines = lines;
+
+  // Career milestones reached with this ball (not once the match is recorded, not in a Super Over)
+  std::optional<MomentEvent> career;
+  if (m_ctx) {
+    const Career& c = m_ctx->game.state().career;
+    const bool recorded = std::find(c.recorded.begin(), c.recorded.end(), m.id) != c.recorded.end();
+    for (const auto& r : reachedInMatch(c.players, m)) {
+      if (m_reached.count(r.key)) continue;
+      m_reached.insert(r.key);
+      if (!recorded && !inn.superOver && fresh >= 1 && fresh <= 14)
+        career = MomentEvent{MomentKind::Milestone, milestoneText(r.type, r.value), "Career milestone \xc2\xb7 " + m.players.at(r.id).name};
+    }
+  }
+  // 1-14 new lines: the biggest thing that happened (a sim brings more and gets no banner)
+  if (fresh < 1 || fresh > 14) return;
+  auto rank = [](CommentKind k) {
+    switch (k) {
+      case CommentKind::result: return 5;
+      case CommentKind::wicket: return 4;
+      case CommentKind::milestone: return 3;
+      case CommentKind::six: return 2;
+      case CommentKind::four: return 1;
+      default: return 0;
+    }
+  };
+  const CommentaryLine* best = nullptr;
+  for (size_t i = lines - fresh; i < lines; ++i) {
+    const CommentaryLine& c = inn.commentary[i];
+    if (rank(c.kind) > (best ? rank(best->kind) : 0)) best = &c;
+  }
+  // "Bowler to Batter, ..." -> the batter
+  auto batterOf = [](const std::string& text) {
+    const size_t to = text.find(" to "), comma = text.find(',');
+    return to != std::string::npos && comma != std::string::npos && comma > to ? upper(text.substr(to + 4, comma - to - 4)) : std::string();
+  };
+  if (best && best->kind == CommentKind::result) {
+    triggerMomentBanner({MomentKind::Result, "Result", m.result ? m.result->text : best->text});
+  } else if (career) {
+    triggerMomentBanner(*career);
+  } else if (best) {
+    switch (best->kind) {
+      case CommentKind::wicket: triggerMomentBanner({MomentKind::Wicket, "Wicket", batterOf(best->text)}); break;
+      case CommentKind::milestone: triggerMomentBanner({MomentKind::Milestone, best->text, ""}); break;
+      case CommentKind::six: triggerMomentBanner({MomentKind::Six, "Six!", batterOf(best->text)}); break;
+      case CommentKind::four: triggerMomentBanner({MomentKind::Four, "Four", batterOf(best->text)}); break;
+      default: break;
     }
   }
 }

@@ -2,6 +2,8 @@
 
 #include <unordered_map>
 
+#include "core/str.hpp"
+
 #include "engine/league.hpp"
 #include "engine/rules.hpp"
 
@@ -51,6 +53,10 @@ void MatchSession::newMatch(int home, int away, int32_t seed, std::optional<std:
   watchClock_ = 0;
   events_.clear();
   winChance_.reset();  // the last match's estimate means nothing here
+  winPoints_.clear();
+  pendingPoint_.reset();
+  lastWickets_ = 0;
+  lastInnings_ = -1;
   afterBalls();
 }
 
@@ -72,6 +78,10 @@ void MatchSession::adopt(Match match, std::vector<Team> league) {
   watchClock_ = 0;
   events_.clear();
   winChance_.reset();
+  winPoints_.clear();
+  pendingPoint_.reset();
+  lastWickets_ = 0;
+  lastInnings_ = -1;
   afterBalls();
 }
 
@@ -242,7 +252,47 @@ void MatchSession::afterBalls() {
   restartWinProb();
 }
 
+void MatchSession::addWinPoint(WinPoint p) {
+  // the same moment again (an AI call, a setting changed): the newer estimate wins
+  if (!winPoints_.empty() && winPoints_.back().innings == p.innings && winPoints_.back().balls == p.balls &&
+      winPoints_.back().label == p.label) {
+    winPoints_.back() = std::move(p);
+    return;
+  }
+  winPoints_.push_back(std::move(p));
+}
+
 void MatchSession::restartWinProb() {
+  // Is this a checkpoint for the chart?
+  pendingPoint_.reset();
+  const int first = match_.battingFirst.value_or(0);
+  if (!match_.innings.empty()) {
+    const Innings& inn = inningsOf(match_);
+    const int inningsNo = match_.current;
+    const bool wicket = inningsNo == lastInnings_ && inn.wickets > lastWickets_;
+    lastInnings_ = inningsNo;
+    lastWickets_ = inn.wickets;
+    if (!inn.superOver && inningsNo <= 1) {
+      WinPoint p;
+      p.innings = inningsNo;
+      p.balls = inn.legalBalls;
+      p.maxBalls = inn.maxBalls;
+      p.label = cat(match_.teams[static_cast<size_t>(inn.batting)].id, ' ', inn.runs, '/', inn.wickets, " (", oversText(inn.legalBalls), " ov)");
+      if (match_.status == MatchStatus::complete) {
+        const auto& r = match_.result;
+        p.first = r && r->winner ? (*r->winner == first ? 1.0 : 0.0) : 0.5;
+        p.label = "End";
+        addWinPoint(p);
+      } else if (match_.status == MatchStatus::break_) {
+        p.label = "Innings break";
+        pendingPoint_ = p;
+      } else if (match_.status == MatchStatus::live) {
+        const bool overEnd = inn.legalBalls % 6 == 0;
+        const bool tight = inn.target && inn.maxBalls - inn.legalBalls <= 18;
+        if (overEnd || wicket || tight) pendingPoint_ = p;
+      }
+    }
+  }
   // The previous estimate stays on screen until the new one is ready
   if (match_.status == MatchStatus::complete) {
     winRun_.reset();
@@ -251,7 +301,7 @@ void MatchSession::restartWinProb() {
     else winChance_ = std::array<double, 2>{0.5, 0.5};
     return;
   }
-  winRun_ = std::make_unique<WinChanceRun>(match_, 120);
+  winRun_ = std::make_unique<WinChanceRun>(match_, inningsOf(match_).superOver ? 60 : 120);
 }
 
 void MatchSession::update(double dt) {
@@ -264,6 +314,7 @@ void MatchSession::update(double dt) {
       const int wickets = inningsOf(match_).wickets, inningsNo = match_.current;
       nextBall();
       if (stopOnWicket && match_.current == inningsNo && inningsOf(match_).wickets > wickets) watching = false;
+      if (match_.current != inningsNo) watching = false;  // a new innings (a Super Over): pause
     }
   }
   if (winRun_) {
@@ -271,6 +322,11 @@ void MatchSession::update(double dt) {
     if (winRun_->step(12)) {
       winChance_ = winRun_->result();
       winRun_.reset();
+      if (pendingPoint_) {
+        pendingPoint_->first = (*winChance_)[static_cast<size_t>(match_.battingFirst.value_or(0))];
+        addWinPoint(*pendingPoint_);
+        pendingPoint_.reset();
+      }
     }
   }
 }

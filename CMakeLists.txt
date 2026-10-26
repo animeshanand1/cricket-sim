@@ -123,10 +123,13 @@ if(T20_BUILD_APP)
     src/ui/theme.cpp
     src/ui/view_data.cpp
     src/ui/match/captain_panel.cpp
+    src/ui/match/charts.cpp
+    src/ui/match/commentary.cpp
     src/ui/match/crease.cpp
     src/ui/match/field_view.cpp
     src/ui/match/impact_panel.cpp
     src/ui/match/moment_banner.cpp
+    src/ui/match/result_panels.cpp
     src/ui/match/scoreboard.cpp
     src/ui/match/win_and_fans.cpp
     src/ui/screens/club_screen.cpp

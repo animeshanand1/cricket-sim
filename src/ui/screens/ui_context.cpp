@@ -55,6 +55,7 @@ Screen UiContext::parseScreen(const std::string& s) {
   if (s == "sacked") return Screen::sacked;
   if (s == "club") return Screen::club;
   if (s == "players") return Screen::players;
+  if (s == "gallery") return Screen::gallery;
   return Screen::home;
 }
 
@@ -62,7 +63,7 @@ Screen UiContext::screen() const { return parseScreen(game.state().setup.screen)
 
 void UiContext::goTo(Screen s) {
   static const char* names[] = {"home", "xi", "training", "toss", "match", "season",
-                                "offseason", "draft", "sacked", "club", "players"};
+                                "offseason", "draft", "sacked", "club", "players", "gallery"};
   if (s == Screen::players) {
     game.openPlayers();
     return;

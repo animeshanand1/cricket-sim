@@ -2,10 +2,13 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
 #include "engine/fitness.hpp"
+#include "engine/popularity.hpp"
+#include "ui/widgets/panel.hpp"
 #include "ui/gfx.hpp"
 #include "ui/theme.hpp"
 #include "ui/view_data.hpp"
@@ -82,6 +85,62 @@ void ratingNum(double v) {
     return;
   }
   rating(static_cast<int>(std::lround(v)));
+}
+
+void popularityMeter(UiContext& ctx, const char* id) {
+  const auto& th = currentTheme();
+  const auto& career = ctx.game.state().career;
+  const auto rows = topPopular(career.popularity, 5, [&ctx](const PlayerId& pid) {
+    const Player* p = ctx.player(pid);
+    return p && !p->retired;
+  });
+  beginPanel(id, "Popularity");
+  if (rows.empty()) {
+    ImGui::TextColored(vec(th.muted), "No games played yet. The fans pick their favourites once the cricket starts.");
+    endPanel();
+    return;
+  }
+  int rank = 1;
+  for (const auto& r : rows) {
+    const Player* p = ctx.player(r.id);
+    if (!p) continue;
+    ImGui::PushID(r.id.c_str());
+    const TeamId team = p->team.value_or("");
+    {
+      FontScope fs(FontRole::H3);
+      ImGui::TextColored(vec(th.muted), "%d", rank++);
+    }
+    ImGui::SameLine(0, 10);
+    avatar(playerMetaOf(*p), teamColorOf(team), 30, false);
+    ImGui::SameLine(0, 10);
+    ImGui::BeginGroup();
+    nameLink(ctx, *p);
+    if (!team.empty()) {
+      teamInline(team, true, 14);
+    }
+    ImGui::EndGroup();
+    ImGui::SameLine();
+    // the value and its trend, then the bar in the team colour
+    const float barW = std::min(220.0f, ImGui::GetContentRegionAvail().x * 0.45f);
+    const float x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - barW;
+    const std::string v = pct(r.v) + (r.d > 0 ? "  \xe2\x96\xb2 " + num(r.d, 1) : r.d < 0 ? "  \xe2\x96\xbc " + num(-r.d, 1) : "");
+    ImGui::SetCursorPosX(x);
+    ImGui::BeginGroup();
+    {
+      FontScope fs(FontRole::BodyStrong);
+      ImGui::TextColored(vec(r.d > 0 ? th.green : r.d < 0 ? th.red : th.ink), "%s", v.c_str());
+    }
+    const ImVec2 bp = ImGui::GetCursorScreenPos();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(bp, ImVec2(bp.x + barW, bp.y + 6), col(th.surface3), 3);
+    dl->AddRectFilled(bp, ImVec2(bp.x + barW * static_cast<float>(std::clamp(r.v, 0.0, 100.0) / 100.0), bp.y + 6),
+                      hexCol(teamColorOf(team)), 3);
+    ImGui::Dummy(ImVec2(barW, 8));
+    ImGui::EndGroup();
+    ImGui::Dummy(ImVec2(0, 2));
+    ImGui::PopID();
+  }
+  endPanel();
 }
 
 }  // namespace t20::ui

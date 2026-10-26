@@ -32,4 +32,9 @@ std::string signedNum(double v, int dp = 0);  // "+3" / "-2"
 // A coloured bat / bowl / field rating number
 void ratingNum(double v);
 
+// S06 §6 The popularity meter: the league's five most popular active players (rank, avatar, name,
+// team, popularity with its last move, a bar in the team colour). Used on the match result, the
+// season overview and the Players page.
+void popularityMeter(UiContext& ctx, const char* id = "##popularity");
+
 }  // namespace t20::ui

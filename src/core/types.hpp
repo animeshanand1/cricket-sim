@@ -23,7 +23,8 @@ enum class Screen {
   draft,
   sacked,
   club,
-  players
+  players,
+  gallery  // the widget gallery (A6), only from the command line
 };
 
 // High-level view router resolution
@@ -37,7 +38,8 @@ enum class View {
   offseason,
   sacked,
   club,
-  players
+  players,
+  gallery
 };
 
 inline const char* roleToString(Role r) { return name(r).data(); }

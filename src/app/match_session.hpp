@@ -95,10 +95,22 @@ class MatchSession {
 
   bool watching = false;
   bool stopOnWicket = true;  // Watch pauses when a wicket falls
-  double watchInterval = 0.9;  // seconds per ball (Slow 1.6 / Medium 0.9 / Fast 0.35)
+  double watchInterval = 0.7;  // seconds per ball (Slow 1.4 / Medium 0.7 / Fast 0.26)
 
   // Win chance of side 0 and 1 (0-1), once the current sims are done
   std::optional<std::array<double, 2>> winChance() const { return winChance_; }
+
+  // The win-chance chart (S06): a point when an over ends, a wicket falls, at the break, at the
+  // end, and every ball once 18 or fewer are left in a chase. Stretches simmed through are skipped.
+  struct WinPoint {
+    int innings = 0;       // 0 or 1 (Super Overs are left out)
+    int balls = 0, maxBalls = 120;
+    double first = 0.5;    // the side batting first
+    std::string label;     // "RJR 87/2 (9.3 ov)", "Innings break", "End"
+  };
+  const std::vector<WinPoint>& winPoints() const { return winPoints_; }
+  // True while win-chance sims are running for the latest ball
+  bool winChanceBusy() const { return winRun_ != nullptr; }
 
   // Events since the UI last asked (the UI turns them into banners)
   std::vector<BallEvent> takeEvents();
@@ -121,6 +133,10 @@ class MatchSession {
   std::unique_ptr<WinChanceRun> winRun_;
   std::optional<std::array<double, 2>> winChance_;
   std::vector<BallEvent> events_;
+  std::vector<WinPoint> winPoints_;
+  std::optional<WinPoint> pendingPoint_;  // the checkpoint the running sims are for
+  int lastWickets_ = 0, lastInnings_ = -1;
+  void addWinPoint(WinPoint p);
 };
 
 }  // namespace t20::app

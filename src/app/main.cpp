@@ -7,7 +7,8 @@
 //       [--team ID]        manage this team (friendly setup)
 //       [--season]         start a season with it      [--sim-games N]  sim season games up to no. N
 //       [--finish-season]  sim the rest of the season, then go into the off-season
-//       [--screen NAME]    open a screen: home, xi, training, toss, season, offseason, club, players
+//       [--screen NAME]    open a screen: home, xi, training, toss, season, offseason, club, players,
+//                          gallery (every widget in the design system)
 //       [--card ID]        open a player's card ([--edit] in the editor)
 //       [--toss]           set up the friendly up to the toss
 //       [--offseason-stage draft|auction|done]  after --finish-season: close contracts (and the
@@ -15,6 +16,7 @@
 //       [--sacked]         with --finish-season: the board has lost faith before its review
 //   A quick friendly on the Match screen (the A1-S05 checks):
 //       [--balls N]    play N balls first        [--moment]  then play on until a 4, 6 or wicket
+//       [--win-points] let the win-chance sims finish after every ball (fills the S06 chart; slow)
 //       [--size WxH]   window size               [--seed S]  match seed
 //       [--frames F]   frames to render before the capture (default 30)
 //       [--until X]    then play on until the captain is asked for X: bowler, batter, review,
@@ -73,6 +75,7 @@ struct Options {
   std::string team, screen, card, offseasonStage;
   bool season = false, finishSeason = false, toss = false, edit = false, sacked = false;
   int simGames = 0;
+  bool winPoints = false;
   bool quickMatch() const { return balls > 0 || moment || !until.empty(); }
 };
 
@@ -99,6 +102,7 @@ Options parseArgs(int argc, char** argv) {
     else if (a == "--card") o.card = next();
     else if (a == "--edit") o.edit = true;
     else if (a == "--sacked") o.sacked = true;
+    else if (a == "--win-points") o.winPoints = true;
     else if (a == "--season") o.season = true;
     else if (a == "--finish-season") o.finishSeason = true;
     else if (a == "--toss") o.toss = true;
@@ -252,9 +256,10 @@ int main(int argc, char** argv) {
     game.goTo("match");
   }
   // One scripted step: the AI answers any pending call, then a ball is bowled
-  auto step = [&session] {
+  auto step = [&session, &opt] {
     if (session.match().awaiting != t20::Awaiting::none) session.letAiDecide();
     session.nextBall();
+    while (opt.winPoints && session.winChanceBusy()) session.update(0);
   };
   for (int i = 0; i < opt.balls; ++i) step();
   if (opt.moment) {
