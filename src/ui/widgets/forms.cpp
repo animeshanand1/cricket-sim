@@ -31,8 +31,7 @@ bool stepButton(const char* id, const char* glyph, bool enabled) {
   const float a = enabled ? 1.0f : 0.4f;
   dl->AddRectFilled(p, ImVec2(p.x + s, p.y + s), col(hovered ? th.surface3 : th.surface2, a), 8.0f);
   dl->AddRect(p, ImVec2(p.x + s, p.y + s), col(hovered ? th.gold : th.lineStrong, a), 8.0f);
-  const ImVec2 ts = textSize(FontRole::H3, glyph);
-  drawText(dl, FontRole::H3, ImVec2(p.x + (s - ts.x) * 0.5f, p.y + (s - ts.y) * 0.5f - 1), col(th.ink, a), glyph);
+  drawIcon(dl, glyph, p.x + (s - 16) * 0.5f, p.y + (s - 16) * 0.5f, 16.0f, ColorRGBA(th.ink.r, th.ink.g, th.ink.b, a));
   if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   return clicked && enabled;
 }
@@ -52,14 +51,14 @@ bool numberStepper(const char* id, int* value, int min, int max, int step, const
   if (!value) return false;
   ImGui::PushID(id);
   bool changed = false;
-  if (stepButton("-", "\xe2\x88\x92", *value > min)) {
+  if (stepButton("-", "minus", *value > min)) {
     *value = std::max(min, *value - step);
     changed = true;
   }
   ImGui::SameLine(0, 4);
   stepperValue(text ? std::string(text) : std::to_string(*value), 44);
   ImGui::SameLine(0, 4);
-  if (stepButton("+", "+", *value < max)) {
+  if (stepButton("+", "plus", *value < max)) {
     *value = std::min(max, *value + step);
     changed = true;
   }
@@ -71,14 +70,14 @@ bool numberStepperD(const char* id, double* value, double min, double max, doubl
   if (!value) return false;
   ImGui::PushID(id);
   bool changed = false;
-  if (stepButton("-", "\xe2\x88\x92", *value > min)) {
+  if (stepButton("-", "minus", *value > min)) {
     *value = std::max(min, *value - step);
     changed = true;
   }
   ImGui::SameLine(0, 4);
   stepperValue(text, 80);
   ImGui::SameLine(0, 4);
-  if (stepButton("+", "+", *value < max)) {
+  if (stepButton("+", "plus", *value < max)) {
     *value = std::min(max, *value + step);
     changed = true;
   }
@@ -228,7 +227,12 @@ bool beginGrid(const char* id, int columns, float gap) {
   return open;
 }
 
-void gridNext() { ImGui::TableNextColumn(); }
+void gridNext() {
+  ImGui::TableNextColumn();
+  // Tables align a cell's text with framed widgets in other cells of the row; grid cells are
+  // independent blocks, so every cell starts at the top
+  ImGui::GetCurrentWindow()->DC.CurrLineTextBaseOffset = 0;
+}
 
 void endGrid() {
   ImGui::EndTable();

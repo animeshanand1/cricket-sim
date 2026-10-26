@@ -8,7 +8,10 @@
 //       [--season]         start a season with it      [--sim-games N]  sim season games up to no. N
 //       [--finish-season]  sim the rest of the season, then go into the off-season
 //       [--screen NAME]    open a screen: home, xi, training, toss, season, offseason, club, players
-//       [--card ID]        open a player's card          [--toss]  set up the friendly up to the toss
+//       [--card ID]        open a player's card ([--edit] in the editor)
+//       [--toss]           set up the friendly up to the toss
+//       [--offseason-stage draft|auction]  after --finish-season: close contracts (and the draft)
+//       [--sacked]         with --finish-season: the board has lost faith before its review
 //   A quick friendly on the Match screen (the A1-S05 checks):
 //       [--balls N]    play N balls first        [--moment]  then play on until a 4, 6 or wicket
 //       [--size WxH]   window size               [--seed S]  match seed
@@ -66,8 +69,8 @@ struct Options {
   std::vector<std::pair<float, float>> clicks;
   std::string saveDir;
   bool noSave = false;
-  std::string team, screen, card;
-  bool season = false, finishSeason = false, toss = false;
+  std::string team, screen, card, offseasonStage;
+  bool season = false, finishSeason = false, toss = false, edit = false, sacked = false;
   int simGames = 0;
   bool quickMatch() const { return balls > 0 || moment || !until.empty(); }
 };
@@ -93,9 +96,12 @@ Options parseArgs(int argc, char** argv) {
     else if (a == "--team") o.team = next();
     else if (a == "--screen") o.screen = next();
     else if (a == "--card") o.card = next();
+    else if (a == "--edit") o.edit = true;
+    else if (a == "--sacked") o.sacked = true;
     else if (a == "--season") o.season = true;
     else if (a == "--finish-season") o.finishSeason = true;
     else if (a == "--toss") o.toss = true;
+    else if (a == "--offseason-stage") o.offseasonStage = next();
     else if (a == "--sim-games") o.simGames = std::atoi(next().c_str());
   }
   return o;
@@ -219,7 +225,14 @@ int main(int argc, char** argv) {
       t20::app::SimOptions so;
       so.includeUser = true;
       game.simFixtures(so);
+      if (opt.sacked) game.state().world.manager.confidence = 1;
       game.nextSeason();
+      const auto& off = game.state().world.offseason;
+      if (off && (opt.offseasonStage == "draft" || opt.offseasonStage == "auction")) {
+        if (off->stage == "contracts") game.contractsClosed();
+        else if (off->stage == "retention") game.retentionClosed();
+      }
+      if (off && opt.offseasonStage == "auction") game.completeDraft();
     }
   }
   if (opt.toss) {
@@ -228,6 +241,7 @@ int main(int argc, char** argv) {
   }
   if (!opt.screen.empty()) game.goTo(opt.screen);
   if (!opt.card.empty()) game.openCard(opt.card);
+  if (!opt.card.empty() && opt.edit) game.openEditor(opt.card);
 
   if (opt.quickMatch()) {
     // A friendly on the Match screen straight away, played to a state

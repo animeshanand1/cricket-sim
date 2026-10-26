@@ -68,7 +68,7 @@ TableClick sortableTable(const char* tableId, const std::vector<TableColumn>& co
   ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, vec(ColorRGBA(th.surface2.r, th.surface2.g, th.surface2.b, 0.55f)));
   ImGui::PushStyleColor(ImGuiCol_TableBorderLight, vec(th.line));
   ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8, 6));
-  const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
+  const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
   if (ImGui::BeginTable("##t", nCols + (rank ? 1 : 0), flags)) {
     if (rank) ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 26.0f);
     for (const auto& c : columns)

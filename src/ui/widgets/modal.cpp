@@ -69,8 +69,12 @@ bool beginModal(const char* modalId, bool* isOpen, const char* title, float maxW
     *isOpen = false;
     ImGui::CloseCurrentPopup();
   }
-  ImGui::SetCursorPosY(std::max(y1, ImGui::GetCursorPosY()));
-  ImGui::Dummy(ImVec2(0, 4));
+  if (title && *title) {
+    ImGui::SetCursorPosY(std::max(y1, ImGui::GetCursorPosY()));
+    ImGui::Dummy(ImVec2(0, 4));
+  } else {
+    ImGui::SetCursorPosY(y0);  // the close button floats over the content's top right corner
+  }
   return true;
 }
 

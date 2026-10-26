@@ -52,6 +52,32 @@ struct TableClick {
   explicit operator bool() const { return row >= 0 || !link.empty(); }
 };
 
+// Column and cell shorthands
+inline TableColumn textColumn(const std::string& label, float weight = 1.0f, bool sortable = true) {
+  TableColumn c;
+  c.key = c.label = label;
+  c.weight = weight;
+  c.sortable = sortable;
+  return c;
+}
+inline TableColumn numColumn(const std::string& label, const std::string& tooltip = "", bool lowIsGood = false,
+                             const std::string& qualification = "") {
+  TableColumn c;
+  c.key = c.label = label;
+  c.tooltip = tooltip;
+  c.isNumeric = true;
+  c.lowIsGood = lowIsGood;
+  c.qualificationHint = qualification;
+  return c;
+}
+inline TableCell textCell(const std::string& text, CellTone tone = CellTone::Normal) {
+  TableCell c;
+  c.text = text;
+  c.tone = tone;
+  return c;
+}
+inline TableCell dashCell() { return textCell("\xe2\x80\x93"); }
+
 // Draws the table. topN > 0 shows only that many rows until "Show all" is clicked.
 // rank: draw the "#" column (position after sorting).
 TableClick sortableTable(const char* tableId, const std::vector<TableColumn>& columns, const std::vector<TableRowData>& rows,

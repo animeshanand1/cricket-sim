@@ -365,7 +365,7 @@ void MatchScreen::drawScorecard() {
   ImGui::NewLine();
   const Innings& inn = m.innings[static_cast<size_t>(sel)];
 
-  const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
+  const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
   const float half = (ImGui::GetContentRegionAvail().x - 24) * 0.58f;
   ImGui::BeginGroup();
   if (ImGui::BeginTable("##bat", 7, flags, ImVec2(half, 0))) {

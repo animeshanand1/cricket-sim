@@ -129,11 +129,16 @@ if(T20_BUILD_APP)
     src/ui/match/moment_banner.cpp
     src/ui/match/scoreboard.cpp
     src/ui/match/win_and_fans.cpp
+    src/ui/screens/club_screen.cpp
     src/ui/screens/common.cpp
     src/ui/screens/gallery_screen.cpp
     src/ui/screens/home_screen.cpp
     src/ui/screens/match_screen.cpp
+    src/ui/screens/offseason_screen.cpp
+    src/ui/screens/player_card.cpp
+    src/ui/screens/players_screen.cpp
     src/ui/screens/screens.cpp
+    src/ui/screens/season_screen.cpp
     src/ui/screens/toss_screen.cpp
     src/ui/screens/training_screen.cpp
     src/ui/screens/ui_context.cpp
