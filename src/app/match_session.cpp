@@ -45,12 +45,42 @@ void MatchSession::newMatch(int home, int away, int32_t seed, std::optional<std:
   match_ = createMatch(setup);
   autoToss(match_);
   hasMatch_ = true;
+  adopted_ = false;
   reported_ = false;
   watching = false;
   watchClock_ = 0;
   events_.clear();
   winChance_.reset();  // the last match's estimate means nothing here
   afterBalls();
+}
+
+void MatchSession::adopt(Match match, std::vector<Team> league) {
+  league_ = std::move(league);
+  const TeamId home = match.fixture ? match.fixture->home : match.teams[0].id;
+  home_ = away_ = 0;
+  for (size_t i = 0; i < league_.size(); ++i) {
+    if (league_[i].id == home) home_ = static_cast<int>(i);
+    else if (league_[i].id == match.teams[0].id || league_[i].id == match.teams[1].id) away_ = static_cast<int>(i);
+  }
+  seed_ = match.seed;
+  match_ = std::move(match);
+  hasMatch_ = true;
+  adopted_ = true;
+  reported_ = false;
+  watching = false;
+  watchClock_ = 0;
+  events_.clear();
+  winChance_.reset();
+  afterBalls();
+}
+
+void MatchSession::clear() {
+  hasMatch_ = false;
+  adopted_ = false;
+  watching = false;
+  winRun_.reset();
+  winChance_.reset();
+  events_.clear();
 }
 
 void MatchSession::rematch() { newMatch(home_, away_, seed_ + 7919); }

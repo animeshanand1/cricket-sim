@@ -240,18 +240,62 @@ void notice(const std::string& text, NoticeKind kind) {
   ImGui::Dummy(ImVec2(w, h));
 }
 
-bool confirmInline(const char* message, const char* confirmLabel, const char* cancelLabel) {
+int confirmInline(const char* message, const char* confirmLabel, const char* cancelLabel) {
+  ImGui::PushID(message);
   notice(message, NoticeKind::Warn);
-  const bool ok = button(confirmLabel, ButtonKind::Primary);
+  ImGui::Dummy(ImVec2(0, 2));
+  int out = 0;
+  if (button(confirmLabel, ButtonKind::Primary)) out = 1;
   ImGui::SameLine();
-  button(cancelLabel, ButtonKind::Quiet);
-  return ok;
+  if (button(cancelLabel, ButtonKind::Quiet)) out = -1;
+  ImGui::PopID();
+  return out;
 }
+
+namespace {
+struct StickyState {
+  ImVec2 start;
+  float width = 0;
+};
+StickyState s_sticky;
+}  // namespace
 
 void beginStickyActions() {
-  ImGui::Separator();
+  // A raised bar across the page: the screen's forward / back buttons, right after its content
+  ImGui::Dummy(ImVec2(0, 6));
+  s_sticky.start = ImGui::GetCursorScreenPos();
+  s_sticky.width = ImGui::GetContentRegionAvail().x;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->ChannelsSplit(2);
+  dl->ChannelsSetCurrent(1);
+  ImGui::SetCursorScreenPos(ImVec2(s_sticky.start.x + 14, s_sticky.start.y + 12));
+  ImGui::BeginGroup();
 }
 
-void endStickyActions() {}
+void endStickyActions() {
+  const auto& th = currentTheme();
+  ImGui::EndGroup();
+  const float bottom = ImGui::GetItemRectMax().y + 12;
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->ChannelsSetCurrent(0);
+  const ImVec2 a = s_sticky.start, b(s_sticky.start.x + s_sticky.width, bottom);
+  dl->AddRectFilled(a, b, col(th.surface), metrics().panelRadius);
+  dl->AddRect(a, b, col(th.lineStrong), metrics().panelRadius);
+  dl->ChannelsMerge();
+  ImGui::SetCursorScreenPos(a);
+  ImGui::Dummy(ImVec2(s_sticky.width, bottom - a.y));
+}
+
+float rightAlign(float width) {
+  const float avail = ImGui::GetContentRegionAvail().x;
+  if (avail > width) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);
+  return avail;
+}
+
+float buttonWidth(const char* label, ButtonKind kind) {
+  const char* end = ImGui::FindRenderedTextEnd(label);
+  const float padX = kind == ButtonKind::Small ? 12.0f : metrics().buttonPaddingX;
+  return textSize(FontRole::BodyStrong, std::string_view(label, static_cast<size_t>(end - label))).x + padX * 2;
+}
 
 } // namespace t20::ui

@@ -121,6 +121,7 @@ if(T20_BUILD_APP)
     src/ui/gfx.cpp
     src/ui/icons.cpp
     src/ui/theme.cpp
+    src/ui/view_data.cpp
     src/ui/match/captain_panel.cpp
     src/ui/match/crease.cpp
     src/ui/match/field_view.cpp
@@ -132,6 +133,7 @@ if(T20_BUILD_APP)
     src/ui/screens/match_screen.cpp
     src/ui/widgets/avatar.cpp
     src/ui/widgets/controls.cpp
+    src/ui/widgets/forms.cpp
     src/ui/widgets/meter_and_rating.cpp
     src/ui/widgets/modal.cpp
     src/ui/widgets/nav_bar.cpp

@@ -6,6 +6,7 @@
 // Randomness only makes seeds (new seasons, new friendlies, "surprise me" pitches); it comes from
 // injectable sources so tests can replay the JS game's runs.
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -62,6 +63,8 @@ class Game {
   };
   Dirty takeDirty();
   void markAllDirty();
+  // Goes up with every change to the state, so screens can cache what they derive from it
+  uint64_t revision() const { return rev_; }
 
   // ---- setup (setupSlice reducers)
   void goTo(const std::string& screen);
@@ -178,9 +181,16 @@ class Game {
   void matchFitness(const Match& m);
   void seasonTargetSet(const TeamId& team, int rank, int season);
 
+  // Every change goes through here: it flags the part for saving and bumps the revision
+  Dirty& mark() {
+    ++rev_;
+    return dirty_;
+  }
+
   GameState s_;
   Seeds seeds_;
   Dirty dirty_;
+  uint64_t rev_ = 0;
 };
 
 }  // namespace t20::app
