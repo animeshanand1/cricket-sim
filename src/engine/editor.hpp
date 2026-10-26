@@ -12,7 +12,8 @@
 
 namespace t20 {
 
-inline constexpr size_t NAME_MAX = 24;
+// Not NAME_MAX: glibc defines that as a macro
+inline constexpr size_t PLAYER_NAME_MAX = 24;
 inline constexpr int AGE_MIN = 16;
 inline constexpr int AGE_MAX = 50;
 inline constexpr double SKILL_MIN = 1;

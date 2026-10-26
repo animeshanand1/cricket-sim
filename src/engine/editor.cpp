@@ -129,8 +129,8 @@ EditResult validateEdit(const Player& p, const EditDraft& draft) {
   const std::string nm = tidyName(draft.name);
   if (nm.empty())
     errors.set("name", "Enter a name.");
-  else if (jsLength(nm) > NAME_MAX)
-    errors.set("name", cat("Keep it to ", static_cast<int>(NAME_MAX), " characters."));
+  else if (jsLength(nm) > PLAYER_NAME_MAX)
+    errors.set("name", cat("Keep it to ", static_cast<int>(PLAYER_NAME_MAX), " characters."));
   const double age = draft.age;
   if (!std::isfinite(age) || age < AGE_MIN || age > AGE_MAX) errors.set("age", cat("Age must be ", AGE_MIN, " to ", AGE_MAX, "."));
   Identity who = identityOf(p, draft);
