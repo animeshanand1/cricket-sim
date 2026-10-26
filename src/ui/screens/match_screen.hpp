@@ -9,11 +9,15 @@
 
 namespace t20::ui {
 
+class UiContext;
+
 class MatchScreen : public IScreenView {
  public:
   explicit MatchScreen(app::MatchSession& session) : m_session(session) {}
+  // Bound to the game: season fixtures and friendlies set up on the Home screen
+  explicit MatchScreen(UiContext& ctx);
 
-  void onEnter() override {}
+  void onEnter() override;
   void draw(float contentWidth) override;
 
  private:
@@ -25,8 +29,10 @@ class MatchScreen : public IScreenView {
   void handleKeys();
   void consumeEvents();
   void newFixture();
+  std::vector<MatchExit> exits();
 
   app::MatchSession& m_session;
+  UiContext* m_ctx = nullptr;
   int m_speed = 1;          // Slow / Medium / Fast
   int m_scorecardInnings = -1;  // -1 = follow the current innings
   int m_fixture = 0;

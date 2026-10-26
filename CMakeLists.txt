@@ -129,8 +129,15 @@ if(T20_BUILD_APP)
     src/ui/match/moment_banner.cpp
     src/ui/match/scoreboard.cpp
     src/ui/match/win_and_fans.cpp
+    src/ui/screens/common.cpp
     src/ui/screens/gallery_screen.cpp
+    src/ui/screens/home_screen.cpp
     src/ui/screens/match_screen.cpp
+    src/ui/screens/screens.cpp
+    src/ui/screens/toss_screen.cpp
+    src/ui/screens/training_screen.cpp
+    src/ui/screens/ui_context.cpp
+    src/ui/screens/xi_screen.cpp
     src/ui/widgets/avatar.cpp
     src/ui/widgets/controls.cpp
     src/ui/widgets/forms.cpp

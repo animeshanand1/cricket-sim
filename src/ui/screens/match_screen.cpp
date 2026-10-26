@@ -7,6 +7,8 @@
 #include "engine/mindset.hpp"
 #include "engine/pitch.hpp"
 #include "engine/rules.hpp"
+#include "engine/season.hpp"
+#include "ui/screens/ui_context.hpp"
 #include "ui/anim.hpp"
 #include "ui/format.hpp"
 #include "ui/gfx.hpp"
@@ -156,6 +158,21 @@ void eyebrow(const std::string& text, const ColorRGBA& c) {
 
 }  // namespace
 
+MatchScreen::MatchScreen(UiContext& ctx) : m_session(ctx.session), m_ctx(&ctx) {}
+
+void MatchScreen::onEnter() {
+  m_scorecardInnings = -1;
+  m_captain = CaptainPanelState{};
+  m_impact = ImpactPanelState{};
+}
+
+std::vector<MatchExit> MatchScreen::exits() {
+  if (!m_ctx) return {{"Rematch", [this] { m_session.rematch(); }}, {"New fixture", [this] { newFixture(); }}};
+  UiContext* ctx = m_ctx;
+  if (ctx->matchIsFixture()) return {{"Back to the season", [ctx] { ctx->leaveMatch(); }}};
+  return {{"Rematch", [ctx] { ctx->rematch(); }}, {"New game", [ctx] { ctx->leaveMatch(); }}};
+}
+
 void MatchScreen::draw(float contentWidth) {
   handleKeys();
   consumeEvents();
@@ -186,7 +203,7 @@ void MatchScreen::draw(float contentWidth) {
   const bool twoCol = mainW >= 900.0f;
   const float colW = twoCol ? (mainW - gap) * 0.5f : mainW;
   ImGui::BeginChild("##left", ImVec2(colW, 0), ImGuiChildFlags_AutoResizeY, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar);
-  drawCaptainPanel(m_session, m_captain, [this] { newFixture(); });
+  drawCaptainPanel(m_session, m_captain, exits());
   ImGui::Dummy(ImVec2(0, 6));
   const MatchStatus status = m_session.match().status;
   if (status == MatchStatus::live) {
@@ -207,7 +224,12 @@ void MatchScreen::draw(float contentWidth) {
 void MatchScreen::drawHeader() {
   const auto& th = currentTheme();
   const Match& m = m_session.match();
-  eyebrow("Friendly · " + m_session.homeTeam().ground, th.goldText);
+  std::string kind = "Friendly";
+  if (m.fixture) {
+    kind = "Season " + std::to_string(m.fixture->seasonNo) + " · " +
+           (m.fixture->stage == Stage::league ? "Match " + std::to_string(m.fixture->no) : std::string(stageLabel(m.fixture->stage)));
+  }
+  eyebrow(kind + " · " + (m.fixture && !m.fixture->venue.empty() ? m.fixture->venue : m_session.homeTeam().ground), th.goldText);
   {
     FontScope fs(FontRole::H1);
     ImGui::Text("%s v %s", m.teams[0].name.c_str(), m.teams[1].name.c_str());
@@ -260,7 +282,13 @@ void MatchScreen::drawDock() {
     if (full("Sim innings", ButtonKind::Quiet, live || m.status == MatchStatus::break_)) m_session.simInnings();
     if (full("Sim match", ButtonKind::Quiet, m.status != MatchStatus::complete)) m_session.simMatch();
   }
-  if (full("New match", ButtonKind::Quiet, true)) newFixture();
+  if (!m_ctx) {
+    if (full("New match", ButtonKind::Quiet, true)) newFixture();
+  } else if (m.status == MatchStatus::complete) {
+    const auto ex = exits();
+    for (const auto& e : ex)
+      if (full(e.label.c_str(), ButtonKind::Quiet, true)) e.action();
+  }
   ImGui::Dummy(ImVec2(0, 6));
   {
     FontScope fs(FontRole::Hint);

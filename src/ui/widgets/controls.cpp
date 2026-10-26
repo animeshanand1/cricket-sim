@@ -256,6 +256,7 @@ namespace {
 struct StickyState {
   ImVec2 start;
   float width = 0;
+  bool active = false;
 };
 StickyState s_sticky;
 }  // namespace
@@ -270,11 +271,13 @@ void beginStickyActions() {
   dl->ChannelsSetCurrent(1);
   ImGui::SetCursorScreenPos(ImVec2(s_sticky.start.x + 14, s_sticky.start.y + 12));
   ImGui::BeginGroup();
+  s_sticky.active = true;
 }
 
 void endStickyActions() {
   const auto& th = currentTheme();
   ImGui::EndGroup();
+  s_sticky.active = false;
   const float bottom = ImGui::GetItemRectMax().y + 12;
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->ChannelsSetCurrent(0);
@@ -287,7 +290,7 @@ void endStickyActions() {
 }
 
 float rightAlign(float width) {
-  const float avail = ImGui::GetContentRegionAvail().x;
+  const float avail = ImGui::GetContentRegionAvail().x - (s_sticky.active ? 14.0f : 0.0f);
   if (avail > width) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);
   return avail;
 }
