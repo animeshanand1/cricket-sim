@@ -70,7 +70,11 @@ void UiContext::goTo(Screen s) {
   game.goTo(names[static_cast<int>(s)]);
 }
 
-bool UiContext::hasMatch() const { return session.hasMatch() || game.state().match.has_value(); }
+bool UiContext::hasMatch() const {
+  // A finished match the session has let go of (after a rematch) is not one to go back to
+  const auto& m = game.state().match;
+  return session.hasMatch() || (m && m->status != MatchStatus::complete);
+}
 
 bool UiContext::matchIsLive() const {
   if (session.hasMatch()) return session.isLive();
@@ -80,7 +84,7 @@ bool UiContext::matchIsLive() const {
 
 void UiContext::startLiveMatch() {
   const auto& m = game.state().match;
-  if (!m) return;
+  if (!m || m->status == MatchStatus::toss || m->status == MatchStatus::complete) return;
   session.setSavedMatchups(&game.state().career.matchups);
   session.adopt(*m, game.league());
   game.goTo("match");
@@ -92,18 +96,23 @@ bool UiContext::matchIsFixture() const {
   return m && m->fixture.has_value();
 }
 
+void UiContext::handBack() {
+  // The Game gets the match as the session left it: its settings (tempo, auto-bowl) carry over to
+  // the next match, as in the JS, and the pre-match copy can't be picked up and played again
+  if (session.hasMatch() && session.adopted() && game.state().match && game.state().match->id == session.match().id)
+    game.state().match = session.match();
+  session.clear();
+}
+
 void UiContext::leaveMatch() {
   const bool fixture = matchIsFixture();
-  // The session's settings (tempo, auto-bowl) carry over to the next match, as in the JS
-  if (session.hasMatch() && game.state().match) game.state().match->settings = session.match().settings;
-  session.clear();
+  handBack();
   if (fixture) game.backToSeason();
   else game.newGame();
 }
 
 void UiContext::rematch() {
-  if (session.hasMatch() && game.state().match) game.state().match->settings = session.match().settings;
-  session.clear();
+  handBack();
   game.rematch();
 }
 

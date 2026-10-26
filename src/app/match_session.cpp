@@ -66,7 +66,8 @@ void MatchSession::adopt(Match match, std::vector<Team> league) {
   match_ = std::move(match);
   hasMatch_ = true;
   adopted_ = true;
-  reported_ = false;
+  // A match that was already over when it came in has been recorded: never report it again
+  reported_ = match_.status == MatchStatus::complete;
   watching = false;
   watchClock_ = 0;
   events_.clear();

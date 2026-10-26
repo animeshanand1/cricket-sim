@@ -68,6 +68,7 @@ class SeasonScreen : public IScreenView {
   uint64_t statsAt_ = UINT64_MAX;
   SeasonStats stats_;
   std::vector<TeamStat> teams_;
+  SeasonAwards awards_;
   // transfer room
   TeamId tradeWith_;
   std::vector<PlayerId> give_, get_;
@@ -80,8 +81,13 @@ void SeasonScreen::refreshStats(const Season& season) {
   if (statsAt_ == ctx_.revision()) return;
   statsAt_ = ctx_.revision();
   const World& w = ctx_.game.state().world;
-  stats_ = seasonStats(season, [&w](const PlayerId& id) { return teamOfId(w, id).value_or(id.substr(0, id.find('-'))); });
+  const TeamOf teamOf = [&w](const PlayerId& id) { return teamOfId(w, id).value_or(id.substr(0, id.find('-'))); };
+  stats_ = seasonStats(season, teamOf);
   teams_ = teamAnalytics(season);
+  awards_ = seasonAwards(season, teamOf, [&w](const PlayerId& id) -> std::optional<int> {
+    const Player* p = w.players.find(id);
+    return p ? std::optional<int>(p->age) : std::nullopt;
+  });
 }
 
 void SeasonScreen::draw(float width) {
@@ -459,13 +465,7 @@ void SeasonScreen::drawTeams(const Season& season) {
 }
 
 void SeasonScreen::drawAwards(const Season& season) {
-  const World& w = ctx_.game.state().world;
-  const auto aw = seasonAwards(
-      season, [&w](const PlayerId& id) { return teamOfId(w, id).value_or(id.substr(0, id.find('-'))); },
-      [&w](const PlayerId& id) -> std::optional<int> {
-        const Player* p = w.players.find(id);
-        return p ? std::optional<int>(p->age) : std::nullopt;
-      });
+  const SeasonAwards& aw = awards_;
   beginPanel("##awards", season.champion ? "Season awards" : "Award races");
   if (!season.champion) hint("Who leads each race right now. The awards are decided when the final is played.");
   ImGui::Dummy(ImVec2(0, 4));

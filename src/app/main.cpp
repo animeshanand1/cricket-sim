@@ -10,7 +10,8 @@
 //       [--screen NAME]    open a screen: home, xi, training, toss, season, offseason, club, players
 //       [--card ID]        open a player's card ([--edit] in the editor)
 //       [--toss]           set up the friendly up to the toss
-//       [--offseason-stage draft|auction]  after --finish-season: close contracts (and the draft)
+//       [--offseason-stage draft|auction|done]  after --finish-season: close contracts (and the
+//                          draft; done: auto-bid the whole auction)
 //       [--sacked]         with --finish-season: the board has lost faith before its review
 //   A quick friendly on the Match screen (the A1-S05 checks):
 //       [--balls N]    play N balls first        [--moment]  then play on until a 4, 6 or wicket
@@ -228,11 +229,13 @@ int main(int argc, char** argv) {
       if (opt.sacked) game.state().world.manager.confidence = 1;
       game.nextSeason();
       const auto& off = game.state().world.offseason;
-      if (off && (opt.offseasonStage == "draft" || opt.offseasonStage == "auction")) {
+      const bool past = opt.offseasonStage == "draft" || opt.offseasonStage == "auction" || opt.offseasonStage == "done";
+      if (off && past) {
         if (off->stage == "contracts") game.contractsClosed();
         else if (off->stage == "retention") game.retentionClosed();
       }
-      if (off && opt.offseasonStage == "auction") game.completeDraft();
+      if (off && (opt.offseasonStage == "auction" || opt.offseasonStage == "done")) game.completeDraft();
+      if (off && opt.offseasonStage == "done") game.auctionAutoRest();
     }
   }
   if (opt.toss) {

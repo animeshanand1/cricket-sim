@@ -55,6 +55,7 @@ class UiContext {
 
  private:
   void refresh();
+  void handBack();
   uint64_t builtAt_ = UINT64_MAX;
   std::vector<Team> league_;
   OrderedMap<PlayerId, Player> players_;

@@ -174,6 +174,8 @@ std::vector<MatchExit> MatchScreen::exits() {
 }
 
 void MatchScreen::draw(float contentWidth) {
+  // Toss decided but not yet out in the middle (the nav bar's Match link): take it from the Game
+  if (m_ctx && !m_session.hasMatch()) m_ctx->startLiveMatch();
   handleKeys();
   consumeEvents();
   const auto& th = currentTheme();
